@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.2
+
+**cpm adapter now records restart and parallelism settings.** `number_of_starts`,
+`initial_guess`, `parallel`, `cores`, `ppt_identifier` and `libraries` are stored
+as plain attributes on the optimiser rather than inside `kwargs`, so the previous
+version missed them entirely.
+
+`number_of_starts` is the one that matters. With more than one start and no
+explicit `initial_guess`, cpm draws initial guesses at random -- so identical
+data, bounds and estimator can converge to different optima across runs. The
+manifest now records the restart count and whether the guess was supplied or
+drawn, which is the difference between "this fit is irreproducible" and "this
+fit is irreproducible and here is why".
+
+**Added `tests/test_adapters_live.py`.** Real workloads against Jaxley, cpm and
+MeltingPot, each skipping cleanly when its framework is absent. Adapters read
+attributes of fast-moving research code and fail *silently by design* -- a
+renamed attribute yields `<unavailable>` in the manifest rather than an
+exception. Only a live run notices. Run these after every upgrade of a target
+framework, not only at release.
+
+**Added `[all]` extra** installing all three target frameworks.
+
 ## 0.1.1
 
 Two bugs found by running the test suite on a machine other than the one it was
