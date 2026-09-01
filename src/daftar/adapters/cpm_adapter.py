@@ -128,21 +128,29 @@ def describe_optimiser(optimiser: Any, run: Run, prefix: str = "fit") -> None:
     # These are constructor arguments stored as plain attributes, not in
     # ``kwargs``, so a generic tracker that only reads kwargs misses them.
     #
-    # ``number_of_starts`` is the important one. With more than one start and
-    # no explicit initial_guess, cpm draws initial guesses at random -- so the
-    # same data, same bounds and same estimator can converge to different
-    # optima across runs. Recording the restart count and whether the guess was
-    # supplied or drawn is the difference between "this fit is irreproducible"
-    # and "this fit is irreproducible *and here is why*".
-    run.log_param(
-        f"{prefix}.number_of_starts",
-        safe(lambda: optimiser.__number_of_starts__, None)
-        or safe(lambda: getattr(optimiser, "number_of_starts", 1), 1),
-    )
+    # ``number_of_starts`` is never retained by cpm: it is consumed in
+    # ``__init__`` to build ``initial_guess`` with shape
+    # ``(number_of_starts, n_free_params)`` and then discarded. cpm itself
+    # recovers it as ``self.initial_guess.shape[0]``, so we do the same.
     guess = safe(lambda: optimiser.initial_guess)
-    run.log_param(f"{prefix}.initial_guess_supplied", guess is not None)
     if guess is not None:
-        run.log_param(f"{prefix}.initial_guess", guess)
+        run.log_param(
+            f"{prefix}.number_of_starts", safe(lambda: len(guess), "unknown")
+        )
+        # Record the guesses themselves rather than a "were these supplied?"
+        # flag. cpm keeps no record of whether guesses were user-supplied or
+        # drawn at random, so that flag is not recoverable -- but the values
+        # are, and they are strictly more useful. If they were drawn randomly
+        # they differ between runs, so a diff shows
+        # ``param.fit.initial_guess`` as a candidate cause of a different fit
+        # instead of leaving the divergence unexplained.
+        run.log_param(
+            f"{prefix}.initial_guess",
+            safe(lambda: [[round(float(v), 8) for v in row] for row in guess],
+                 "<unavailable>"),
+        )
+    else:
+        run.log_param(f"{prefix}.number_of_starts", 1)
 
     run.log_param(f"{prefix}.parallel", bool(safe(lambda: optimiser.__parallel__, False)))
     cores = safe(lambda: optimiser.cl)
