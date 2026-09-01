@@ -520,3 +520,77 @@ def test_install_source_absent_for_stdlib(store):
     from daftar import capture
 
     assert capture._install_source("definitely-not-a-real-package") is None
+
+
+def test_cpm_adapter_reads_cohort_from_the_optimiser_not_the_model(store):
+    """The cpm Wrapper holds one participant; the optimiser holds the cohort.
+
+    cpm calls `model.reset(data=participant)` per subject, so a Wrapper's
+    `.data` is a single-participant template. Reading it reports a cohort of 1
+    however many people are in the study. Confidently wrong provenance is worse
+    than none, so this is pinned with a stub rather than left to the live tests,
+    which only run when cpm is installed.
+    """
+    pd = pytest.importorskip("pandas")
+    import numpy as np
+
+    from daftar.adapters import cpm as cpma
+
+    full = pd.DataFrame({
+        "ppt": [1, 1, 1, 2, 2, 2],
+        "stimulus": [1.0, 2.0, 3.0, 1.0, 2.0, 3.0],
+        "observed": [0.1, 0.2, 0.3, 0.15, 0.25, 0.35],
+    })
+    grouped = full.groupby("ppt")
+    groups = list(grouped.groups.keys())
+
+    class WrapperStub:
+        data = grouped.get_group(groups[0])   # one participant -- the trap
+        parameters = None
+
+    class OptimiserStub:
+        model = WrapperStub()
+        data = grouped                         # the real cohort
+        participants = WrapperStub.data        # cpm's misleading name
+        initial_guess = np.zeros((2, 1))
+        __parallel__ = False
+        __libraries__ = ["numpy"]
+        cl = None
+        ppt_identifier = "ppt"
+        prior = False
+        kwargs = {"approx_grad": True}
+        loss = type("f", (), {"__name__": "continuous"})()
+        fit: list = []
+        parameters: list = []
+
+    stub = OptimiserStub()
+    stub.groups = groups
+
+    with daftar.track("cohort", store=store) as run:
+        cpma.describe_optimiser(stub, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.data.n_participants") == "2"
+    # len() on a DataFrameGroupBy counts groups, not rows.
+    assert m.get("param.data.n_records") == "6"
+    assert m.get("param.fit.number_of_starts") == "2"
+
+
+def test_cpm_describe_data_handles_every_shape(store):
+    """DataFrame, DataFrameGroupBy and list must all work without raising."""
+    pd = pytest.importorskip("pandas")
+
+    from daftar.adapters import cpm as cpma
+
+    full = pd.DataFrame({"ppt": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 4.0]})
+    for obj, expected in (
+        (full, "2"),
+        (full.groupby("ppt"), "2"),
+        ([{"a": 1}, {"a": 2}, {"a": 3}], "3"),
+        (full[["x"]], None),          # no identifier column: report nothing
+    ):
+        with daftar.track("shape", store=store) as run:
+            cpma.describe_data(obj, run)
+            rid = run.run_id
+        assert store.load(rid).get("param.data.n_participants") == expected
