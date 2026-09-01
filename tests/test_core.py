@@ -469,10 +469,54 @@ def test_daftar_store_does_not_make_the_repo_look_dirty(git_repo):
 
 
 def test_unseeded_runs_differ_by_seed_and_that_is_a_real_cause(store):
-    """Two unseeded runs are genuinely different experiments. Say so."""
+    """Two unseeded runs are genuinely different experiments. Say so.
+
+    The assertion is deliberately about the *namespace*, not an exact field
+    list. How many `seed.*` fields exist depends on which RNG libraries happen
+    to be imported: with jax present, `apply_seeds` also records
+    `seed.jax_root_key`, which is derived from the seed and therefore differs
+    too. An earlier version asserted `== ["seed.value"]` and passed only in
+    environments without jax -- the same environment-dependence this package
+    exists to expose.
+    """
     with daftar.track("a", store=store) as r1:
         first = r1.run_id
     with daftar.track("b", store=store) as r2:
         second = r2.run_id
+
     causes = diff_manifests(store.load(first), store.load(second)).causes
-    assert [c.key for c in causes] == ["seed.value"]
+    keys = [c.key for c in causes]
+
+    assert "seed.value" in keys
+    assert all(k.startswith("seed.") for k in keys), (
+        f"only the seed should differ between two unseeded runs, got {keys}"
+    )
+
+
+def test_install_source_is_recorded_for_non_index_installs(store):
+    """A version string is not an identity.
+
+    Two builds can report the same version and behave differently -- the case
+    that motivated this: jaxley 0.13.0 on PyPI is broken with current JAX, and
+    jaxley `main` fixes it while still calling itself 0.13.0. A manifest that
+    recorded only `env.jaxley = 0.13.0` would call those two environments
+    identical when one works and one does not.
+
+    PEP 610 records the true origin in direct_url.json for anything not
+    installed from an index. daftar itself is installed editable during
+    development, so it is a reliable subject here.
+    """
+    from daftar import capture
+
+    env = capture.environment()
+    assert env.get("daftar"), "daftar should record its own version"
+    source = env.get("daftar.source")
+    if source is not None:  # None when installed normally from PyPI
+        assert source.startswith(("editable:", "git+", "local:")), source
+
+
+def test_install_source_absent_for_stdlib(store):
+    """No direct_url.json means an index install; absence is the signal."""
+    from daftar import capture
+
+    assert capture._install_source("definitely-not-a-real-package") is None
