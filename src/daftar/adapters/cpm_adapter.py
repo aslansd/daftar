@@ -125,6 +125,36 @@ def describe_optimiser(optimiser: Any, run: Run, prefix: str = "fit") -> None:
     )
     run.log_param(f"{prefix}.uses_prior", bool(safe(lambda: optimiser.prior, False)))
 
+    # These are constructor arguments stored as plain attributes, not in
+    # ``kwargs``, so a generic tracker that only reads kwargs misses them.
+    #
+    # ``number_of_starts`` is the important one. With more than one start and
+    # no explicit initial_guess, cpm draws initial guesses at random -- so the
+    # same data, same bounds and same estimator can converge to different
+    # optima across runs. Recording the restart count and whether the guess was
+    # supplied or drawn is the difference between "this fit is irreproducible"
+    # and "this fit is irreproducible *and here is why*".
+    run.log_param(
+        f"{prefix}.number_of_starts",
+        safe(lambda: optimiser.__number_of_starts__, None)
+        or safe(lambda: getattr(optimiser, "number_of_starts", 1), 1),
+    )
+    guess = safe(lambda: optimiser.initial_guess)
+    run.log_param(f"{prefix}.initial_guess_supplied", guess is not None)
+    if guess is not None:
+        run.log_param(f"{prefix}.initial_guess", guess)
+
+    run.log_param(f"{prefix}.parallel", bool(safe(lambda: optimiser.__parallel__, False)))
+    cores = safe(lambda: optimiser.cl)
+    if cores is not None:
+        run.log_param(f"{prefix}.cores", cores)
+    ppt = safe(lambda: optimiser.ppt_identifier)
+    if ppt is not None:
+        run.log_param(f"{prefix}.ppt_identifier", ppt)
+    run.log_param(
+        f"{prefix}.libraries", safe(lambda: sorted(optimiser.__libraries__), [])
+    )
+
     kwargs = safe(lambda: dict(optimiser.kwargs or {}), {})
     for k, v in sorted(kwargs.items()):
         run.log_param(f"{prefix}.kwargs.{k}", v)
