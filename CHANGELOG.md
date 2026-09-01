@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.4
+
+**Fixed a cpm adapter bug that reported the wrong cohort size.** The adapter
+described `optimiser.model.data`, but a cpm `Wrapper` holds a *single
+participant's* trials as a template -- cpm calls `model.reset(data=participant)`
+for each subject in turn. So a 60-participant study was recorded as
+`data.n_participants = 1`.
+
+The cohort lives on the optimiser. `optimiser.data` is a `DataFrameGroupBy` and
+`optimiser.groups` is the authoritative list of cohort keys. Note that cpm's
+attribute named `participants` is *not* the participant list: it is the first
+group's DataFrame, kept as a template.
+
+Two related fixes in `describe_data`:
+
+* `len()` on a `DataFrameGroupBy` counts groups, not rows, so trial counts were
+  wrong for grouped input. It now reads through `.obj`.
+* It now handles DataFrame, DataFrameGroupBy and list-of-participants input,
+  which are the three shapes cpm accepts.
+
+A cohort size that is confidently wrong is worse than one that is absent, so
+this is pinned by unit tests with a stub rather than left to the live tests,
+which only run where cpm is installed.
+
 ## 0.1.3
 
 **Fixed the cpm live test.** It built `Value(value=0.1, lower=0.0, upper=1.0)`
