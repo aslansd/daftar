@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.1.3
+
+**Fixed the cpm live test.** It built `Value(value=0.1, lower=0.0, upper=1.0)`
+and expected it to be fitted. In cpm a parameter is *free* only if it has a
+prior -- bounds alone leave it fixed -- so `FminBound` correctly refused to run
+a model with no free parameters. The test now supplies a prior, and asserts
+`n_parameters` and `n_free_parameters` separately, since those two numbers
+differ and only one appears in the model's own repr.
+
+**Jaxley tests now skip on a framework version clash instead of failing.**
+Jaxley 0.13.0 calls `jnp.clip(x, a_max=...)`; current JAX removed that argument.
+The adapter is fine, and Jaxley `main` already fixed it. A preflight
+integration now detects the clash and skips with an explanation. Adapter tests
+exist to say whether *the adapter* broke; if another package's incompatibility
+shows up as a red failure, the suite stops being trusted.
+
+**Environment capture now records where a package was installed *from*.**
+A version string is not an identity. jaxley 0.13.0 on PyPI is broken with
+current JAX; jaxley `main` fixes it and still calls itself 0.13.0. A manifest
+recording only `env.jaxley = 0.13.0` would call those two environments
+identical when one works and one does not -- which is worse than recording
+nothing.
+
+daftar now reads PEP 610 `direct_url.json` and records `env.<pkg>.source` for
+anything not installed from an index:
+
+```
+env.jaxley          0.13.0
+env.jaxley.source   git+https://github.com/jaxleyverse/jaxley.git#2638cca2665e
+```
+
+Index installs record nothing, which is the correct default: absence means
+"from PyPI". Editable and local-path installs are recorded too, so a run made
+against a working copy is distinguishable from one made against a release.
+
+**Fixed a real cpm adapter bug: `number_of_starts` was always recorded as 1.**
+cpm never retains it. The constructor consumes it to build `initial_guess` with
+shape `(number_of_starts, n_free_params)` and then discards it; cpm itself
+recovers the count internally as `initial_guess.shape[0]`. The adapter now does
+the same.
+
+The `initial_guess_supplied` flag has been removed and replaced with the
+**actual guess values**. Whether guesses were user-supplied or drawn at random
+is genuinely unrecoverable from the object -- cpm keeps no record of it -- but
+the values are recoverable and are strictly more useful. When guesses are drawn
+randomly they differ between runs, so `diff` now names
+`param.fit.initial_guess` as a candidate cause of a changed fit instead of
+reporting the run as nondeterministic with no explanation.
+
+**Fixed the cpm live test again: `approx_grad=True` is required.** cpm forwards
+`**kwargs` to scipy's `fmin_l_bfgs_b`, which without it expects the objective to
+return `(value, gradient)` rather than a scalar. cpm's own tests and notebooks
+all pass it; it is easy to miss because it is not a named argument. The test now
+also asserts `param.fit.kwargs.approx_grad` reaches the manifest -- a numerical
+setting that changes the answer, lives in an opaque dict, and appears nowhere in
+the model definition is exactly what the adapter is for.
+
+**Preflight skips are now narrow.** Only the known Jaxley/JAX `a_max` clash
+skips; any other preflight failure lets the test run and fail with a real
+traceback. A silent skip on an unrecognised error hides genuine adapter
+breakage.
+
+**Fixed an environment-dependent assertion in `test_core.py`.**
+`test_unseeded_runs_differ_by_seed_and_that_is_a_real_cause` asserted the causes
+were exactly `["seed.value"]`, which holds only when jax is absent. With jax
+importable, `apply_seeds` also records `seed.jax_root_key`, which is derived
+from the seed and therefore also differs. The test now asserts the *namespace*
+-- `seed.value` present, and nothing outside `seed.*` -- which is the real
+invariant. Same class of bug as the dirty-tree failure in 0.1.1: a test that
+quietly encoded one machine's configuration.
+
+**Live tests print framework versions**, because "the adapter tests passed" only
+means something alongside what they passed against.
+
+**Added `TROUBLESHOOTING.md`** covering both failures, the stale-pip-index
+problem, and MeltingPot install trouble.
+
 ## 0.1.2
 
 **cpm adapter now records restart and parallelism settings.** `number_of_starts`,
