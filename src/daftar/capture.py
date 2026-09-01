@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata as md
+import json
 import os
 import platform
 import random
@@ -111,6 +112,49 @@ def _version(dist: str) -> str | None:
         return None
 
 
+def _install_source(dist: str) -> str | None:
+    """Where a distribution was installed *from*, per PEP 610.
+
+    Version strings are not identities. Two builds can report the same version
+    and behave differently: a package installed from PyPI and the same version
+    installed from a git branch that fixed a bug are indistinguishable by
+    ``env.<pkg>`` alone -- and a manifest that calls them identical when they
+    are not is worse than one that says nothing.
+
+    pip records the true origin in ``direct_url.json`` beside the metadata
+    whenever a distribution came from somewhere other than an index: a VCS URL
+    with the resolved commit, a local path, or an editable install. Nothing is
+    recorded for ordinary index installs, which is the right default -- absence
+    means "from PyPI".
+    """
+    try:
+        data = md.distribution(dist).read_text("direct_url.json")
+        if not data:
+            return None
+        info = json.loads(data)
+    except Exception:
+        return None
+
+    url = info.get("url", "")
+    vcs = info.get("vcs_info") or {}
+    if vcs:
+        commit = vcs.get("commit_id", "")
+        rev = vcs.get("requested_revision")
+        label = f"{vcs.get('vcs', 'vcs')}+{url}"
+        if rev:
+            label += f"@{rev}"
+        if commit:
+            label += f"#{commit[:12]}"
+        return label
+
+    dir_info = info.get("dir_info") or {}
+    if dir_info.get("editable"):
+        return f"editable:{url}"
+    if url:
+        return f"local:{url}"
+    return None
+
+
 def imported_package_versions() -> dict[str, str]:
     """Versions of top-level packages currently imported, plus the usual suspects.
 
@@ -127,9 +171,15 @@ def imported_package_versions() -> dict[str, str]:
 
     found: dict[str, str] = {}
     for name in names:
-        v = _version(name) or _version(name.replace("_", "-"))
-        if v:
-            found[name.replace("-", "_")] = v
+        canonical = name.replace("_", "-")
+        v = _version(name) or _version(canonical)
+        if not v:
+            continue
+        key = name.replace("-", "_")
+        found[key] = v
+        source = _install_source(name) or _install_source(canonical)
+        if source:
+            found[f"{key}.source"] = source
     return found
 
 
