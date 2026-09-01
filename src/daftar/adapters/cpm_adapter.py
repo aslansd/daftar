@@ -83,32 +83,63 @@ def describe_parameters(parameters: Any, run: Run, prefix: str = "model") -> Non
 # data
 # --------------------------------------------------------------------------
 
-def describe_data(data: Any, run: Run, prefix: str = "data") -> None:
+def describe_data(
+    data: Any, run: Run, prefix: str = "data", groups: Any = None
+) -> None:
     """Record shape and a stable hash of participant identifiers.
 
     Hashing the identifier list rather than storing it keeps subject IDs out of
     the manifest -- these are behavioural studies and manifests get committed to
     public repositories -- while still detecting a changed or reordered cohort.
+
+    ``data`` may be a DataFrame, a DataFrameGroupBy (what cpm holds after
+    ``prepare_data``), or a list of per-participant dicts. Pass ``groups`` when
+    the caller already knows the cohort keys; it is authoritative.
     """
     run.log_param(f"{prefix}.type", type(data).__name__)
 
-    n = safe(lambda: len(data))
-    if n is not None:
-        run.log_param(f"{prefix}.n_records", n)
+    # Cohort identifiers, in order of reliability.
+    ids: list[str] | None = None
+    if groups:
+        ids = [str(g) for g in groups]
+    else:
+        keys = safe(lambda: list(data.groups.keys()))
+        if keys:
+            ids = [str(k) for k in keys]
 
-    columns = safe(lambda: sorted(map(str, data.columns)))
+    # A DataFrameGroupBy exposes the underlying frame as ``.obj``; len() on the
+    # groupby itself counts groups, not rows, which would silently mislabel the
+    # number of trials as the number of participants.
+    frame = safe(lambda: data.obj)
+    if frame is None:
+        frame = data
+
+    n_records = safe(lambda: len(frame))
+    if n_records is not None:
+        run.log_param(f"{prefix}.n_records", n_records)
+
+    columns = safe(lambda: sorted(map(str, frame.columns)))
     if columns:
         run.log_param(f"{prefix}.columns", columns)
 
-    for id_col in ("ppt", "participant", "subject", "id"):
-        ids = safe(lambda c=id_col: sorted(map(str, data[c].unique())))
-        if ids:
-            run.log_param(f"{prefix}.n_participants", len(ids))
-            digest = hashlib.sha256("\n".join(ids).encode()).hexdigest()[:12]
-            run.log_param(f"{prefix}.participant_id_sha256", digest)
-            break
+    if ids is None:
+        for id_col in ("ppt", "participant", "subject", "id"):
+            found = safe(lambda c=id_col: sorted(map(str, frame[c].unique())))
+            if found:
+                ids = found
+                break
 
-    if safe(lambda: "observed" in data) or safe(lambda: "observed" in data.columns):
+    if ids is None and isinstance(data, list):
+        # A list of per-participant records: the length is the cohort size.
+        ids = [str(i) for i in range(len(data))]
+
+    if ids is not None:
+        run.log_param(f"{prefix}.n_participants", len(ids))
+        digest = hashlib.sha256("\n".join(sorted(ids)).encode()).hexdigest()[:12]
+        run.log_param(f"{prefix}.participant_id_sha256", digest)
+
+    has_observed = safe(lambda: "observed" in frame.columns, False)
+    if has_observed:
         run.log_param(f"{prefix}.has_observed", True)
 
 
@@ -177,9 +208,23 @@ def describe_optimiser(optimiser: Any, run: Run, prefix: str = "fit") -> None:
         params = safe(lambda: model.parameters)
         if params is not None:
             describe_parameters(params, run, prefix="model")
-        data = safe(lambda: model.data)
-        if data is not None:
-            describe_data(data, run, prefix="data")
+
+    # The cohort lives on the *optimiser*, not on the model.
+    #
+    # A cpm Wrapper holds one participant's trials as a template -- cpm calls
+    # `model.reset(data=participant)` for each subject in turn. Reading
+    # `optimiser.model.data` therefore reports a cohort of 1 no matter how many
+    # people are in the study, which is precisely the kind of confidently wrong
+    # provenance that is worse than recording nothing at all.
+    #
+    # `optimiser.groups` is the authoritative list of cohort keys. Note that
+    # cpm's attribute named `participants` is *not* the participant list: it is
+    # the first group's DataFrame, kept as a template.
+    cohort = safe(lambda: optimiser.data)
+    if cohort is not None:
+        describe_data(
+            cohort, run, prefix="data", groups=safe(lambda: optimiser.groups),
+        )
 
 
 def describe_fit_results(optimiser: Any, run: Run, prefix: str = "fit") -> None:
