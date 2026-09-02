@@ -631,3 +631,114 @@ def test_replay_emits_a_runnable_pip_command(store):
 
     assert plan.sources["jaxley"].startswith("git+")
     assert "jaxley.source" not in plan.env
+
+
+def test_manifest_values_never_contain_memory_addresses(store):
+    """A repr with an address changes every run and fakes a difference.
+
+    `<Foo object at 0x7f3e...>` embeds id(), so two identical runs would record
+    different values for the same field and every diff would report a change
+    that did not happen. That is the exact failure this package exists to
+    detect, so it must not be produced by the package itself.
+    """
+    class Opaque:
+        pass
+
+    with daftar.track("addr", params={
+        "obj": Opaque(),
+        "nested": {"inner": Opaque()},
+        "listed": [Opaque(), Opaque()],
+    }, store=store) as run:
+        rid = run.run_id
+
+    fields = store.load(rid).fields
+    assert not any("0x" in v for v in fields.values()), fields
+    assert fields["param.obj"].endswith("Opaque object>")
+
+    # Two runs must agree, which is the property that actually matters.
+    with daftar.track("addr2", params={"obj": Opaque()}, store=store) as run:
+        second = run.run_id
+    assert store.load(rid).get("param.obj") == store.load(second).get("param.obj")
+
+
+def test_cpm_prior_records_distribution_name_not_object(store):
+    """cpm turns prior="truncated_normal" into a frozen scipy distribution.
+
+    Stringifying it gives `<scipy...truncnorm_gen object at 0x...>`. The useful,
+    stable content is the distribution name plus its loc/scale/shape arguments.
+    """
+    pytest.importorskip("scipy")
+    from scipy.stats import norm, truncnorm
+
+    from daftar.adapters import cpm as cpma
+
+    class Value:
+        def __init__(self, v, prior=None):
+            self.value, self.prior = v, prior
+
+        def __float__(self):
+            return float(self.value)
+
+    class Params:
+        def __init__(self):
+            self.alpha = Value(0.5, truncnorm(loc=0.5, scale=0.25, a=-2.0, b=2.0))
+            self.temperature = Value(1.0, norm(loc=1.0, scale=0.5))
+            self.weights = Value([0.1, 0.2, 0.3])   # vector-valued, no prior
+
+        def keys(self):
+            return ["alpha", "temperature", "weights"]
+
+        def free(self):
+            return ["alpha", "temperature"]
+
+        def bounds(self):
+            return [[0.0, 0.0], [1.0, 10.0]]
+
+    with daftar.track("prior", store=store) as run:
+        cpma.describe_parameters(Params(), run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.model.prior.alpha") == "truncnorm"
+    assert m.get("param.model.prior.temperature") == "norm"
+    assert "loc: 0.5" in m.get("param.model.prior_args.alpha")
+    # Vector-valued parameters keep their numbers instead of becoming a repr.
+    assert m.get("param.model.value.weights") == "[0.1, 0.2, 0.3]"
+    assert not any("0x" in v for v in m.fields.values())
+
+
+def test_failed_fits_are_not_counted_as_converged(store):
+    """`False == 0` is True in Python, so a naive check inflates n_converged.
+
+    scipy-style results use `status == 0` for success while cpm's own results
+    use `success: bool`. Testing the integer convention first counts every
+    `success: False` as a success, reporting 60/60 converged when 7 failed --
+    and a group mean over silently-nonconverged fits is a confidently wrong
+    number, which is worse than an absent one.
+    """
+    from daftar.adapters import cpm as cpma
+
+    class Opt:
+        fit = (
+            [{"success": True, "fun": 1.0}] * 53
+            + [{"success": False, "fun": 9.9}] * 7
+        )
+        parameters: list = []
+
+    with daftar.track("conv", store=store) as run:
+        cpma.describe_fit_results(Opt(), run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("result.fit.n_fits") == "60"
+    assert m.get("result.fit.n_converged") == "53"
+
+    # scipy's integer convention must still work: 0 means success.
+    class ScipyOpt:
+        fit = [{"status": 0}] * 4 + [{"status": 1}] * 2
+        parameters: list = []
+
+    with daftar.track("conv2", store=store) as run:
+        cpma.describe_fit_results(ScipyOpt(), run)
+        rid2 = run.run_id
+    assert store.load(rid2).get("result.fit.n_converged") == "4"
