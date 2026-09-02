@@ -17,10 +17,19 @@ Design constraints, in priority order:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 SCHEMA_VERSION = "1"
+
+#: ``<Foo object at 0x7f3e...>`` -> ``<Foo object>``. CPython reprs embed the
+#: id() of the object, which differs on every run and every machine.
+_ADDRESS_RE = re.compile(r" at 0x[0-9a-fA-F]+")
+
+
+def _strip_addresses(text: str) -> str:
+    return _ADDRESS_RE.sub("", text)
 
 # Namespaces. Order matters for display.
 NS_CODE = "code"      # git commit, dirty state, entrypoint
@@ -76,6 +85,13 @@ def _stringify(value: Any) -> str:
     ``0.025000000000000001`` compare unequal across platforms, and a diff tool
     that reports spurious differences gets uninstalled within a week. One
     canonical textual form per value is worth the loss of type fidelity.
+
+    The one hard guarantee: **the output never contains a memory address.**
+    Python's default ``repr`` for an arbitrary object is
+    ``<Thing object at 0x7f3e...>``, which changes on every run. A field like
+    that turns every diff into a false positive and would quietly destroy the
+    thing this package is for. Addresses are stripped, leaving ``<Thing
+    object>``, which is uninformative but at least honest and stable.
     """
     if value is None:
         return "null"
@@ -85,7 +101,7 @@ def _stringify(value: Any) -> str:
         # repr() round-trips exactly in Python 3 and keeps 0.1 as "0.1".
         return repr(value)
     if isinstance(value, (int, str)):
-        return str(value)
+        return _strip_addresses(str(value))
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(_stringify(v) for v in value) + "]"
     if isinstance(value, dict):
@@ -98,7 +114,7 @@ def _stringify(value: Any) -> str:
                 return _stringify(getattr(value, attr)())
             except Exception:  # pragma: no cover - defensive
                 break
-    return str(value)
+    return _strip_addresses(str(value))
 
 
 @dataclass
