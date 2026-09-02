@@ -594,3 +594,40 @@ def test_cpm_describe_data_handles_every_shape(store):
             cpma.describe_data(obj, run)
             rid = run.run_id
         assert store.load(rid).get("param.data.n_participants") == expected
+
+
+def test_replay_emits_a_runnable_pip_command(store):
+    """A package from git cannot be pinned by version -- the version is not the code.
+
+    Regression: `env.<pkg>.source` fields introduced in 0.1.3 were rendered as if
+    they were packages, producing lines like
+    `pip install jaxley.source==git+https://...`, which is not installable.
+    """
+    from daftar.manifest import Manifest
+
+    m = Manifest(run_id="r-mix")
+    m.set("code.entrypoint", "sim.py::main")
+    m.set("seed.value", "1")
+    m.set("env.numpy", "2.4.6")
+    m.set("env.jaxley", "0.13.0")
+    m.set("env.jaxley.source", "git+https://example.com/j.git#abc123def456")
+    m.set("env.local_pkg", "1.0.0")
+    m.set("env.local_pkg.source", "editable:file:///home/me/work")
+    store.save(m)
+
+    plan = daftar.plan_replay(store.load("r-mix"), check_current=False)
+    text = plan.render()
+
+    # The .source pseudo-entries must never appear as requirements.
+    assert ".source==" not in text
+    assert "jaxley.source" not in text
+    # Versioned packages pin normally; VCS packages carry their origin.
+    assert "numpy==2.4.6" in text
+    assert '"jaxley @ git+https://example.com/j.git@abc123def456"' in text
+    # Local installs are unfetchable and must be called out, not faked.
+    assert "not fetchable by pip" in text
+    assert "local_pkg==1.0.0" not in text
+    assert any("local path" in w for w in plan.warnings)
+
+    assert plan.sources["jaxley"].startswith("git+")
+    assert "jaxley.source" not in plan.env
