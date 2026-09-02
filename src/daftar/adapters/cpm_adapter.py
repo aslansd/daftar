@@ -43,6 +43,67 @@ def is_available() -> bool:
 # parameters
 # --------------------------------------------------------------------------
 
+def _describe_prior(prior: Any) -> tuple[str, Any]:
+    """Name and parameters of a cpm prior.
+
+    ``Value.prior`` is not the string you passed to the constructor -- cpm turns
+    ``prior="truncated_normal"`` into a *frozen scipy distribution*. Stringifying
+    that object yields ``<scipy...truncnorm_gen object at 0x7f...>``: a memory
+    address, different on every run, which would make every diff report a change
+    that did not happen.
+
+    Frozen distributions expose the useful parts as ``.dist.name`` (``truncnorm``,
+    ``norm``, ``beta``) plus ``.args`` and ``.kwds`` for the shape, location and
+    scale actually used. Those are the numbers that define the prior, and they
+    are stable.
+    """
+    name = safe(lambda: prior.dist.name)
+    if not name:
+        name = safe(lambda: prior.name) or type(prior).__name__
+
+    params: dict[str, Any] = {}
+    kwds = safe(lambda: dict(prior.kwds), {}) or {}
+    for k, v in kwds.items():
+        params[k] = safe(lambda vv=v: round(float(vv), 8), vv_fallback(v))
+    args = safe(lambda: list(prior.args), []) or []
+    for i, v in enumerate(args):
+        params[f"arg{i}"] = safe(lambda vv=v: round(float(vv), 8), vv_fallback(v))
+    return str(name), params
+
+
+def vv_fallback(v: Any) -> str:
+    return "<unavailable>" if v is None else str(type(v).__name__)
+
+
+def _scalar(value: Any) -> Any:
+    """A stable representation of a parameter value.
+
+    cpm's ``Value`` defines ``__float__``, so scalars convert cleanly. But cpm
+    also allows vector-valued parameters (``Value(value=[0.1, 0.2, 0.3])``), and
+    for those ``float()`` raises and the object is not iterable either -- the
+    numbers live on ``.value``, and ``Value`` also implements ``__array__``.
+    Falling back to ``str(value)`` would emit a memory address, so both routes
+    to the underlying numbers are tried before giving up.
+    """
+    as_float = safe(lambda: float(value))
+    if as_float is not None:
+        return round(as_float, 8)
+
+    # Unwrap a Value-like container, then treat it as a sequence.
+    inner = safe(lambda: value.value)
+    for candidate in (inner, value):
+        if candidate is None:
+            continue
+        as_list = safe(lambda c=candidate: [round(float(x), 8) for x in c])
+        if as_list is not None:
+            return as_list
+
+    as_array = safe(lambda: [round(float(x), 8) for x in __import__("numpy").asarray(value).ravel()])
+    if as_array is not None:
+        return as_array
+    return "<non-numeric>"
+
+
 def describe_parameters(parameters: Any, run: Run, prefix: str = "model") -> None:
     """Record every free parameter's value, bounds, and prior."""
     names = safe(lambda: list(parameters.keys()), [])
@@ -61,22 +122,19 @@ def describe_parameters(parameters: Any, run: Run, prefix: str = "model") -> Non
             for i, nm in enumerate(safe(lambda: list(parameters.free()), names)):
                 run.log_param(f"{prefix}.bounds.{nm}", f"[{lowers[i]}, {uppers[i]}]")
         except Exception:
-            run.log_param(f"{prefix}.bounds", str(bounds))
+            run.log_param(f"{prefix}.bounds", _scalar(bounds))
 
     for nm in names:
         value = safe(lambda n=nm: getattr(parameters, n))
         if value is None:
             continue
-        run.log_param(f"{prefix}.value.{nm}", safe(lambda v=value: float(v), str(value)))
+        run.log_param(f"{prefix}.value.{nm}", _scalar(value))
         prior = safe(lambda v=value: getattr(v, "prior", None))
         if prior is not None:
-            run.log_param(
-                f"{prefix}.prior.{nm}",
-                safe(lambda p=prior: getattr(p, "dist", type(p).__name__), str(prior)),
-            )
-            args = safe(lambda v=value: getattr(v, "args", None))
-            if args:
-                run.log_param(f"{prefix}.prior_args.{nm}", args)
+            dist_name, dist_params = _describe_prior(prior)
+            run.log_param(f"{prefix}.prior.{nm}", dist_name)
+            if dist_params:
+                run.log_param(f"{prefix}.prior_args.{nm}", dist_params)
 
 
 # --------------------------------------------------------------------------
@@ -227,6 +285,24 @@ def describe_optimiser(optimiser: Any, run: Run, prefix: str = "fit") -> None:
         )
 
 
+def _is_converged(status: Any) -> bool:
+    """Interpret a convergence flag across the conventions cpm may hand back.
+
+    The subtlety that bit this once: in Python ``False == 0`` is ``True``. A
+    naive ``status is True or status == 0`` therefore counts *failed* fits as
+    converged, which inflates ``n_converged`` to the total every time. A group
+    mean silently computed over non-converged fits is exactly the confidently
+    wrong number this adapter exists to prevent, so booleans are tested before
+    integers -- and note ``isinstance(True, int)`` is also ``True``, hence the
+    order.
+    """
+    if isinstance(status, bool) or type(status).__name__ == "bool_":
+        return bool(status)
+    if isinstance(status, int):
+        return status == 0          # scipy convention: 0 means success
+    return bool(status)
+
+
 def describe_fit_results(optimiser: Any, run: Run, prefix: str = "fit") -> None:
     """Record convergence and group-level outcomes after ``optimise()``.
 
@@ -249,7 +325,7 @@ def describe_fit_results(optimiser: Any, run: Run, prefix: str = "fit") -> None:
                 break
         if status is None:
             unknown += 1
-        elif bool(status) is True or status == 0:
+        elif _is_converged(status):
             converged += 1
     run.log_result(f"{prefix}.n_converged", converged)
     if unknown:
