@@ -120,7 +120,8 @@ class ReplayPlan:
     seed: str
     params: dict[str, str]
     inputs: dict[str, str]
-    env: dict[str, str]
+    env: dict[str, str]          # package -> version
+    sources: dict[str, str]      # package -> install origin (PEP 610), if any
     blockers: list[str]
     warnings: list[str]
 
@@ -161,14 +162,34 @@ class ReplayPlan:
         if self.commit and self.commit != "null":
             lines.append(f"    git checkout {self.commit}")
         pkgs = sorted(self.env.items())
-        if len(pkgs) > 12:
+        total = len(pkgs)
+        if total > 12:
             lines.append(
-                f"    # {len(pkgs)} packages recorded; see env.* in the manifest"
+                f"    # {total} packages recorded; see env.* in the manifest"
             )
             pkgs = pkgs[:12]
-        if pkgs:
+
+        # A package installed from a VCS or a local path cannot be pinned by
+        # version: the version string does not identify the code. Emit the
+        # origin instead, and separate out the ones pip cannot fetch at all.
+        specs: list[str] = []
+        manual: list[tuple[str, str]] = []
+        for name, version in pkgs:
+            origin = self.sources.get(name)
+            if origin is None:
+                specs.append(f"{name}=={version}")
+            elif origin.startswith(("git+", "hg+", "svn+", "bzr+")):
+                url = origin.replace("#", "@", 1) if "#" in origin else origin
+                specs.append(f'"{name} @ {url}"')
+            else:
+                manual.append((name, origin))
+
+        if specs:
+            lines.append("    pip install " + " ".join(specs))
+        for name, origin in manual:
             lines.append(
-                "    pip install " + " ".join(f"{k}=={v}" for k, v in pkgs)
+                f"    # {name}: installed from {origin} -- not fetchable by pip;"
+                f" obtain this source separately"
             )
         lines.append(f"    # then run {self.entrypoint} with the parameters above")
         return "\n".join(lines)
@@ -201,7 +222,24 @@ def plan_replay(manifest: Manifest, *, check_current: bool = True) -> ReplayPlan
         k.rsplit(".", 1)[0].split(".", 1)[1]: v
         for k, v in manifest.namespace("input").items() if k.endswith(".sha256")
     }
-    env = {k.split(".", 1)[1]: v for k, v in manifest.namespace("env").items()}
+    env_ns = manifest.namespace("env")
+    env = {
+        k.split(".", 1)[1]: v for k, v in env_ns.items()
+        if not k.endswith(".source")
+    }
+    sources = {
+        k.split(".", 1)[1].rsplit(".source", 1)[0]: v
+        for k, v in env_ns.items() if k.endswith(".source")
+    }
+    # Editable and local-path installs are the honest hard case: nobody else can
+    # fetch "file:///Users/you/Downloads/thing", and the version string says
+    # nothing about what code was actually there.
+    for pkg, origin in sorted(sources.items()):
+        if origin.startswith(("editable:", "local:")):
+            warnings.append(
+                f"{pkg} was installed from a local path ({origin}); its version "
+                f"string does not identify the code and no one else can fetch it"
+            )
 
     if check_current:
         # Verify recorded input files still hash the same.
@@ -247,6 +285,7 @@ def plan_replay(manifest: Manifest, *, check_current: bool = True) -> ReplayPlan
         inputs=inputs,
         env={k: v for k, v in env.items()
              if k not in ("os", "os_release", "machine", "python_impl", "python")},
+        sources=sources,
         blockers=blockers,
         warnings=warnings,
     )
@@ -356,7 +395,9 @@ def _bundle_readme(m: Manifest, plan: ReplayPlan) -> str:
         lines.append("")
     if plan.env:
         lines += ["## Environment", ""]
-        lines += [f"- {k} {v}" for k, v in sorted(plan.env.items())]
+        for k, v in sorted(plan.env.items()):
+            origin = plan.sources.get(k)
+            lines.append(f"- {k} {v}" + (f"  (from {origin})" if origin else ""))
         lines.append("")
     if plan.blockers:
         lines += ["## Known obstacles to exact reproduction", ""]
