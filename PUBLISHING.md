@@ -1,6 +1,26 @@
 # Publishing daftar
 
-## Why your TestPyPI upload returned 403
+## Routine release
+
+```bash
+rm -rf dist build src/*.egg-info
+python -m build
+python -m twine check dist/*
+python -m twine upload dist/*
+git tag v0.1.5 && git push --tags
+```
+
+Then verify, bypassing pip's cache:
+
+```bash
+pip install --no-cache-dir -U daftar
+```
+
+The rest of this file is background, kept because each item cost time once.
+
+---
+
+## Why a TestPyPI upload returns 403
 
 **TestPyPI is a completely separate service from PyPI.** Separate database,
 separate accounts, separate API tokens. A token issued by `pypi.org` is
@@ -44,7 +64,7 @@ matter:
 - `python -m build` succeeds with no warnings
 - `python -m twine check dist/*` passes both artifacts
 - the wheel installs into a clean virtualenv and imports with zero dependencies
-- 34 tests pass
+- the full suite passes (42 core, plus 7 live adapter tests)
 
 A successful TestPyPI upload would tell you nothing further, and every day spent
 debugging it is a day `daftar` remains unclaimed on the index that matters.
@@ -91,16 +111,18 @@ version.
 
 ## Before announcing
 
-- [ ] `pytest -q` green
-- [ ] `python examples/demo_end_to_end.py` runs on a fresh clone
-- [ ] wheel installed into a clean venv and imported
+- [x] `pytest -q` green
+- [x] `python examples/demo_end_to_end.py` runs on a fresh clone
+- [x] wheel installed into a clean venv and imported
+- [x] all three adapters verified against live frameworks
 - [ ] README renders correctly on the live PyPI page
-- [ ] **run daftar across three of your own repos, unmodified**
-- [ ] `git tag v0.1.0 && git push --tags`
+- [ ] **run daftar across three of your own repos, unmodified, for a month**
+- [ ] `git tag && git push --tags`
 
-The fifth item is the month-7 milestone from the feasibility plan and the only
-real test of whether the API is unobtrusive enough that you keep using it when
-nobody is watching. Do it before the announcement, not after.
+The second-to-last item is the month-7 milestone from the feasibility plan and
+the only real test of whether the API is unobtrusive enough that you keep using
+it when nobody is watching. Do it before the announcement, not after. Everything
+above it is now done.
 
 ## On the licence
 

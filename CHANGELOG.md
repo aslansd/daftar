@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.1.5
+
+**Fixed: `daftar replay` printed a `pip install` line that could not be run.**
+A regression from 0.1.3. The `env.<pkg>.source` fields added in that release
+were rendered as if they were packages, so a run using Jaxley from git produced:
+
+```
+pip install ... jaxley.source==git+https://github.com/jaxleyverse/jaxley.git#2638cca2665e
+```
+
+`jaxley.source` is not a package. Pasting that command fails.
+
+The replay plan now separates versions from origins and emits something
+runnable:
+
+```
+pip install numpy==2.4.6 "jaxley @ git+https://github.com/jaxleyverse/jaxley.git@2638cca2665e"
+# dm_meltingpot: installed from editable:file:///Users/you/meltingpot-main --
+#   not fetchable by pip; obtain this source separately
+```
+
+Three behaviours, one per kind of install:
+
+* **Index installs** pin by version, as before.
+* **VCS installs** carry their URL and resolved commit, because for these the
+  version string does not identify the code -- which was the whole reason for
+  recording origins in 0.1.3.
+* **Editable and local-path installs** are listed as comments, not
+  requirements, and now also raise a warning on the plan. Nobody else can fetch
+  `file:///Users/you/Downloads/thing`, and pretending a version pin would
+  reproduce it is exactly the false confidence this package exists to prevent.
+
+The export bundle README shows origins alongside versions for the same reason.
+
+**MeltingPot adapter verified against a live substrate** for the first time:
+`commons_harvest__open` built and stepped, config hash, roles, per-player
+returns, Gini, and pinned bot checkpoints all recorded. All three adapters are
+now confirmed working against real frameworks.
+
 ## 0.1.4
 
 **Fixed a cpm adapter bug that reported the wrong cohort size.** The adapter

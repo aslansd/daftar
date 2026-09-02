@@ -93,7 +93,7 @@ Three consequences of taking that seriously:
 | `param.*` | everything you chose, including defaults you never passed |
 | `seed.*` | seeds **applied** to `random`, numpy, torch; the JAX root key |
 | `input.*` | sha256 and size of every declared input file or directory |
-| `env.*` | interpreter, OS, and versions of packages the run actually imported |
+| `env.*` | interpreter, OS, versions of packages the run imported, **and where each was installed from** |
 | `result.*` | scalar outcomes worth comparing |
 | `output.*` | sha256 of produced files |
 | `cost.*` | wall clock, host, cpu count |
@@ -106,6 +106,21 @@ that fact tells you the run is irreproducible but does nothing to fix it.
 `track(seed=...)` sets every RNG it can reach, then records what it set. If you
 pass no seed, one is generated, applied, and recorded — an accidental seed that
 is written down is reproducible; a deliberate one that isn't, is not.
+
+**A version string is not an identity.** jaxley 0.13.0 on PyPI is broken with
+current JAX; jaxley `main` fixes it and still calls itself 0.13.0. Recording only
+`env.jaxley = 0.13.0` would call those two environments identical when one works
+and one does not. daftar reads PEP 610 `direct_url.json` and adds
+`env.<pkg>.source` for anything not installed from an index:
+
+```
+env.jaxley          0.13.0
+env.jaxley.source   git+https://github.com/jaxleyverse/jaxley.git#2638cca2665e
+```
+
+Index installs record nothing, which is the right default: absence means "from
+PyPI". `daftar replay` then emits a `pip install` line that actually works,
+pinning index packages by version and VCS packages by URL and commit.
 
 **Dirty working trees get their diff hashed.** "Dirty" alone tells you there
 were uncommitted edits but not whether they were the *same* edits. Hashing the
@@ -184,7 +199,15 @@ Replay plan for r-4f21ab
   BLOCKERS -- this run cannot be reproduced as recorded:
     - input file changed since the run: data/connectome.csv
       (was a7f39b21, now 3e0c77af)
+
+  To reproduce:
+    git checkout 9c1d0ae
+    pip install numpy==2.4.6 "jaxley @ git+https://github.com/jaxleyverse/jaxley.git@2638cca"
 ```
+
+Packages installed from a local path or in editable mode are listed as comments
+rather than requirements, and raise a warning: nobody else can fetch
+`file:///Users/you/Downloads/thing`, and a version pin would not reproduce it.
 
 ---
 
@@ -208,6 +231,9 @@ knowing something a generic tracker cannot infer.
 | `jaxley` | morphology (compartments, branches, channels, synapses), `jx.integrate` defaults you never passed, `jax_enable_x64`, backend |
 | `cpm` | parameter **bounds and priors**, estimator and its scipy method/tolerance, per-participant convergence counts, cohort hash |
 | `meltingpot` | resolved substrate ConfigDict hash, roles, episode-length cap, pinned bot checkpoints, per-player returns and Gini |
+
+All three are verified against live installs by `tests/test_adapters_live.py`,
+which runs real workloads and skips cleanly when a framework is absent.
 
 ```python
 from daftar.adapters import jaxley as jxa
@@ -253,8 +279,17 @@ change, a genuine nondeterminism catch, a sweep, a replay plan, and an export.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q
+pytest -q                                # core suite, no frameworks needed
+
+pip install -e ".[all]"                  # jaxley, cpm-toolbox, dm-meltingpot
+pytest tests/test_adapters_live.py -v    # adapters against real frameworks
 ```
+
+Adapters fail *silently by design* -- `safe()` turns a renamed attribute into
+`<unavailable>` rather than crashing a four-hour simulation -- so adapter rot
+looks fine until someone reads a manifest. Re-run the live suite after every
+upgrade of a target framework, not only at release. See `TROUBLESHOOTING.md`
+if a framework will not install.
 
 ## Licence
 

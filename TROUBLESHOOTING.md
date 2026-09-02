@@ -228,13 +228,45 @@ wrong".
 ## MeltingPot will not install
 
 `dm-meltingpot` depends on `dmlab2d`, whose wheel coverage is narrow and weakest
-on macOS arm64. If it will not install: use Linux, a container, or Colab for that
-adapter alone. If it still will not, ship without it and mark the adapter
-untested in the README. An honest "untested" costs nothing; a claimed
-integration that breaks on someone's first attempt costs you that person.
+on macOS arm64. Installing from a local clone in editable mode works and is what
+was used to verify the adapter (dm-meltingpot 2.4.0, dmlab2d 1.0.0).
 
-The Jaxley and cpm adapters are the ones that must work, because they are the
-beachhead.
+If it will not install at all: use Linux, a container, or Colab for that adapter
+alone. If it still will not, ship without it and mark the adapter untested. An
+honest "untested" costs nothing; a claimed integration that breaks on someone's
+first attempt costs you that person.
+
+### One consequence of installing it editable
+
+Every manifest will then contain:
+
+```
+env.dm_meltingpot          2.4.0
+env.dm_meltingpot.source   editable:file:///Users/you/Downloads/meltingpot-main
+```
+
+and `daftar replay` warns that the version string does not identify the code and
+nobody else can fetch that path. That warning is correct and worth keeping --
+but if you are producing manifests for other people to act on, install a release
+build rather than a working copy.
+
+---
+
+## `daftar replay` prints a pip line I cannot run
+
+Fixed in 0.1.5. Versions 0.1.3 and 0.1.4 rendered `env.<pkg>.source` fields as
+if they were packages:
+
+```
+pip install ... jaxley.source==git+https://github.com/jaxleyverse/jaxley.git#2638cca2665e
+```
+
+`jaxley.source` is not a package. Upgrade to 0.1.5, which emits index packages
+as version pins, VCS packages as `"name @ url@commit"`, and local or editable
+installs as comments plus a warning.
+
+Manifests written by older versions are unaffected -- only the rendering was
+wrong, and re-running `daftar replay` on an old run now prints correctly.
 
 ---
 

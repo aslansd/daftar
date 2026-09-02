@@ -1,9 +1,21 @@
 # Adapter roadmap
 
-## First: verifying the three you have
+## Status: all three adapters verified against live frameworks
+
+```
+tests/test_adapters_live.py::test_jaxley_records_morphology_and_solver_defaults PASSED
+tests/test_adapters_live.py::test_jaxley_same_config_reproduces                PASSED
+tests/test_adapters_live.py::test_cpm_records_bounds_priors_and_restarts       PASSED
+tests/test_adapters_live.py::test_cpm_parameters_alone_can_be_described        PASSED
+tests/test_adapters_live.py::test_meltingpot_records_config_roles_and_returns  PASSED
+tests/test_adapters_live.py::test_meltingpot_scenario_records_bot_checkpoints  PASSED
+```
+
+Jaxley (from git), cpm-toolbox 0.25.6, and dm-meltingpot 2.4.0 with dmlab2d
+1.0.0. The MeltingPot install was the hard one, as expected, and it worked.
 
 ```bash
-pip install -e ".[dev]" jaxley cpm-toolbox
+pip install -e ".[all]"
 pytest tests/test_adapters_live.py -v
 ```
 
@@ -15,23 +27,24 @@ behaviour and it means a broken adapter looks fine until someone reads a
 manifest. Only a live run catches it. Re-run this after every framework upgrade,
 not only at release.
 
-### Expect MeltingPot to be the hard one
+Re-run this after every framework upgrade, not only at release. Adapters fail
+silently by design: `safe()` turns a renamed attribute into `<unavailable>` in
+the manifest rather than crashing a long simulation. That is correct behaviour
+and it means a broken adapter looks fine until someone reads a manifest. Only a
+live run catches it.
 
-`dm-meltingpot` depends on `dmlab2d`, whose wheel coverage is narrow and
-historically weakest on macOS arm64. If it will not install:
-
-- Try Linux, a container, or Colab for that adapter alone.
-- If it still fails, **ship without it.** Mark it experimental in the README and
-  say the adapter is untested against a live substrate. An honest "untested"
-  costs you nothing; a claimed integration that breaks on someone's first
-  attempt costs you that person permanently.
-
-The Jaxley and cpm adapters are the ones that must work, because they are the
-beachhead.
+Note that MeltingPot is installed editable from a local clone. That is fine for
+development but shows up in every manifest as
+`env.dm_meltingpot.source = editable:file:///...`, and `daftar replay` now warns
+that nobody else can fetch it. If you want manifests others can act on, install
+the release instead once your platform has a wheel.
 
 ---
 
 ## The uncomfortable part: you probably should not write more adapters yet
+
+With all three verified, the initial version is done. Everything below is about
+what comes *after* the work that actually matters.
 
 Your month-12 gate is **200 GitHub stars and 5 external contributors**. Notice
 what it does not say: number of adapters. Adapter count is a vanity metric — it
