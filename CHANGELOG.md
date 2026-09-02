@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.1.6
+
+Both fixes here were found by generating manifests for the website demo from
+the real adapter code rather than writing example field names by hand.
+
+**Manifest values can no longer contain memory addresses.** Python's default
+repr for an arbitrary object is `<Foo object at 0x7f3e...>`, which embeds
+`id()` and differs on every run. Any field holding one would make two identical
+runs compare unequal and turn every diff into a false positive -- the precise
+failure this package exists to detect. `_stringify` now strips addresses, so
+the worst case is the uninformative-but-stable `<Foo object>`.
+
+**cpm priors now record the distribution, not the object.** `Value.prior` is
+not the string you passed to the constructor: cpm turns
+`prior="truncated_normal"` into a *frozen scipy distribution*, whose repr is
+`<scipy...truncnorm_gen object at 0x...>`. Manifests now record the
+distribution name and its actual parameters:
+
+```
+param.model.prior.alpha        truncnorm
+param.model.prior_args.alpha   {a: -2.0, b: 2.0, loc: 0.5, scale: 0.25}
+```
+
+Those numbers *are* the prior, and two fits with different priors are different
+experiments even with identical code and data.
+
+**Fixed: failed cpm fits were counted as converged.** The check was
+`bool(status) is True or status == 0`, meant to accept both cpm's
+`success: bool` and scipy's integer convention where 0 means success. But in
+Python `False == 0` is `True`, so every `success: False` matched the second
+clause. `n_converged` therefore always equalled `n_fits`.
+
+That is the field the adapter documentation singles out as the one to watch:
+a group mean over 60 participants of whom 7 hit the iteration limit is a
+different number from one where all 60 converged. Reporting 60/60 when 7 failed
+is worse than reporting nothing. Booleans are now tested before integers --
+noting that `isinstance(True, int)` is also `True`, so the order matters.
+
+**Vector-valued parameters keep their values.** cpm allows
+`Value(value=[0.1, 0.2, 0.3])`, where `float()` raises and the object is not
+iterable -- the numbers live on `.value`, with `__array__` as a second route.
+Both are tried before giving up, instead of falling through to a repr.
+
 ## 0.1.5
 
 **Fixed: `daftar replay` printed a `pip install` line that could not be run.**
