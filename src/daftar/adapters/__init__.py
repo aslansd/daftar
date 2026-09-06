@@ -7,17 +7,19 @@ at module load.
 
 from __future__ import annotations
 
-from . import cpm_adapter, jaxley_adapter, meltingpot_adapter
+from . import brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter
 from .base import Adapter, AdapterRegistry, record_optional, safe
 
 registry = AdapterRegistry()
 registry.register("jaxley", jaxley_adapter)
 registry.register("cpm", cpm_adapter)
 registry.register("meltingpot", meltingpot_adapter)
+registry.register("brian2", brian2_adapter)
 
 jaxley = jaxley_adapter
 cpm = cpm_adapter
 meltingpot = meltingpot_adapter
+brian2 = brian2_adapter
 
 
 def available() -> list[str]:
@@ -31,7 +33,7 @@ def get(name: str):
 
 __all__ = [
     "registry", "available", "get",
-    "jaxley", "cpm", "meltingpot",
-    "jaxley_adapter", "cpm_adapter", "meltingpot_adapter",
+    "jaxley", "cpm", "meltingpot", "brian2",
+    "jaxley_adapter", "cpm_adapter", "meltingpot_adapter", "brian2_adapter",
     "Adapter", "AdapterRegistry", "safe", "record_optional",
 ]
