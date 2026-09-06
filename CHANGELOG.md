@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.3.0 — Brian2
+
+Brian2 hides more of what determines the answer than any other framework daftar
+supports, which makes it the best argument yet for domain adapters.
+
+**The integration method is chosen for you and then forgotten.** Brian2's
+default is not a method but a candidate list, `('exact', 'euler', 'heun')`,
+tried in order until one accepts the equations. Which one wins depends on the
+equations, so a model that integrated `exact` silently falls back to `euler`
+after an edit that makes the system non-linear — changing every result.
+
+Brian2 stores the winner nowhere. `state_updater.method_choice` still holds the
+list you never chose from, and the decision appears only in a log line. The
+adapter records both:
+
+```
+param.group.G.method_choice     ('exact', 'euler', 'heun')   what was permitted
+param.group.G.method_resolved   exact                        what actually ran
+```
+
+Resolution is done by reproducing Brian2's own selection rather than by reading
+its log. That matters: `apply_stateupdater` is cached, so the log line is
+emitted only the first time a set of equations is seen in a process. An earlier
+draft read the log and recorded the method on run 1 and nothing on run 2 —
+making the field appear and disappear between runs, and show up as a spurious
+cause in every diff.
+
+**`codegen.target` defaults to `auto`**, which resolves to Cython where a
+compiler exists and NumPy where one does not. The same script takes different
+code paths on a laptop and on a cluster, and neither the script nor the
+preference records which happened. `brian2.codegen_resolved` does.
+
+**Fixed: `track(seed=...)` did not seed Brian2.** `brian2.seed()` delegates to
+the current device; seeding numpy does not reach it. Without this,
+`connect(p=0.05)` draws a different synaptic graph on every run, so two
+otherwise identical runs differ with nothing in the manifest to explain it.
+Core seeding now calls it and records `seed.brian2`.
+
+Also recorded: the network schedule (reordering thresholds, synapses and resets
+changes results without touching model code), equation hashes with differential
+and parameter variable names, threshold/reset/refractory, per-group `dt`,
+realised synapse counts and delay ranges, `core.default_float_dtype`, and
+monitor output as comparable scalars rather than traces.
+
+Four live tests against a real Brian2 network. Two identical runs now diff to
+`identical` including the synapse count, which is the check that proves the
+seeding fix.
+
 ## 0.2.0 — notebooks
 
 Notebooks are where provenance dies, and until now daftar was no better there

@@ -91,7 +91,7 @@ Three consequences of taking that seriously:
 |---|---|
 | `code.*` | git commit, branch, dirty flag, **hash of uncommitted changes**, entrypoint, argv |
 | `param.*` | everything you chose, including defaults you never passed |
-| `seed.*` | seeds **applied** to `random`, numpy, torch; the JAX root key |
+| `seed.*` | seeds **applied** to `random`, numpy, torch, **Brian2's device RNG**; the JAX root key |
 | `input.*` | sha256 and size of every declared input file or directory |
 | `env.*` | interpreter, OS, versions of packages the run imported, **and where each was installed from** |
 | `result.*` | scalar outcomes worth comparing |
@@ -275,6 +275,7 @@ knowing something a generic tracker cannot infer.
 |---|---|
 | `jaxley` | morphology (compartments, branches, channels, synapses), `jx.integrate` defaults you never passed, `jax_enable_x64`, backend |
 | `cpm` | parameter **bounds and priors**, estimator and its scipy method/tolerance, per-participant convergence counts, cohort hash |
+| `brian2` | **the integration method Brian2 actually chose** (its default is a candidate list, and the winner is stored nowhere), resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
 | `meltingpot` | resolved substrate ConfigDict hash, roles, episode-length cap, pinned bot checkpoints, per-player returns and Gini |
 
 All three are verified against live installs by `tests/test_adapters_live.py`,

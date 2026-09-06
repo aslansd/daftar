@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "daftar"
-version = "0.2.0"
+version = "0.3.0"
 description = "Record what produced each computational result: environment, code, parameters, seeds, inputs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,9 +29,10 @@ Issues = "https://github.com/aslansd/daftar/issues"
 jaxley = ["jaxley"]
 cpm = ["cpm-toolbox"]
 meltingpot = ["dm-meltingpot"]
+brian2 = ["brian2"]
 dev = ["pytest>=7", "numpy", "ipython"]
 notebook = ["ipython"]
-all = ["jaxley", "cpm-toolbox", "dm-meltingpot"]
+all = ["jaxley", "cpm-toolbox", "dm-meltingpot", "brian2"]
 
 [project.scripts]
 daftar = "daftar.cli:main"
