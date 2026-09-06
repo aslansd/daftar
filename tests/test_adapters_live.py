@@ -53,6 +53,70 @@ def _require(name: str):
     return pytest.mark.skipif(True, reason=f"{name} not installed")
 
 
+def _require_working(name: str, probe, clash_marker: str = "version clash"):
+    """Skip only for a *known* framework/dependency clash; fail on anything else.
+
+    This is the third instance of the same pattern -- jaxley against JAX,
+    brian2 against NumPy, cpm against SciPy -- so it is worth stating the rule
+    once. Research packages pin loosely and their dependencies remove APIs, so
+    a framework that imports cleanly can still be unusable.
+
+    The rule: skip when we recognise the clash and can explain it, because it is
+    not our bug and the user needs to be told what to do. Fail loudly for
+    anything else, because an unrecognised error may well be *our* bug and a
+    silent skip would hide it.
+    """
+    state, reason = daftar.adapters.get(name).availability()
+    if state != daftar.adapters.AVAILABLE:
+        return pytest.mark.skipif(True, reason=f"{name}: {reason}")
+    ok, why = probe()
+    return pytest.mark.skipif(not ok and clash_marker in why, reason=why)
+
+
+def _cpm_is_usable() -> tuple[bool, str]:
+    """Check that cpm can actually fit before blaming the adapter.
+
+    cpm 0.25.6 calls ``fmin_l_bfgs_b(..., disp=self.display)``. SciPy deprecated
+    ``disp`` and ``iprint`` for L-BFGS-B and removed them in 1.18.0, so cpm
+    imports fine and then raises ``TypeError`` the moment you fit anything.
+    ``daftar doctor`` reports cpm as ``ok`` because the import succeeds --
+    importing is not the same as working.
+    """
+    try:
+        import numpy as np
+        import pandas as pd
+        from cpm.generators import Parameters, Value, Wrapper
+        from cpm.optimisation import FminBound, minimise
+
+        def model(parameters, trial):
+            return {"dependent": np.array([trial["stimulus"] * parameters.alpha])}
+
+        data = pd.DataFrame({
+            "ppt": [1, 1, 2, 2],
+            "stimulus": [1.0, 2.0, 1.0, 2.0],
+            "observed": [0.1, 0.2, 0.15, 0.25],
+        })
+        params = Parameters(alpha=Value(value=0.1, lower=0.0, upper=1.0,
+                                        prior="norm",
+                                        args={"mean": 0.5, "sd": 0.25}))
+        wrapper = Wrapper(model=model, data=data.iloc[:2], parameters=params)
+        FminBound(model=wrapper, data=data,
+                  minimisation=minimise.LogLikelihood.continuous,
+                  ppt_identifier="ppt", approx_grad=True).optimise()
+        return True, ""
+    except TypeError as exc:
+        if "disp" in str(exc) or "iprint" in str(exc):
+            import scipy
+            return False, (
+                f"cpm/SciPy version clash: this cpm release passes disp= to "
+                f"fmin_l_bfgs_b, which SciPy {scipy.__version__} removed in "
+                f"1.18.0. Not a daftar bug. Fix with: pip install 'scipy<1.18'"
+            )
+        return False, f"cpm unusable: {type(exc).__name__}: {exc}"
+    except Exception as exc:  # pragma: no cover - environment dependent
+        return False, f"cpm unusable: {type(exc).__name__}: {exc}"
+
+
 def _jaxley_is_usable() -> tuple[bool, str]:
     """Check that Jaxley can integrate at all before blaming the adapter.
 
@@ -183,7 +247,7 @@ def test_jaxley_same_config_reproduces(store):
 # cpm
 # ==========================================================================
 
-@_require("cpm")
+@_require_working("cpm", _cpm_is_usable)
 def test_cpm_records_bounds_priors_and_restarts(store):
     import numpy as np
     import pandas as pd
@@ -367,9 +431,12 @@ def test_at_least_report_what_is_installed():
         except Exception:
             pass
 
-    ok, why = _jaxley_is_usable()
-    if daftar.adapters.get("jaxley").is_available() and not ok:
-        print(f"\nNOTE: {why}")
+    print("\nruntime checks (importing is not the same as working):")
+    for name, probe in (("jaxley", _jaxley_is_usable), ("cpm", _cpm_is_usable)):
+        if not daftar.adapters.get(name).is_available():
+            continue
+        ok, why = probe()
+        print(f"  {name:<12} {'usable' if ok else 'UNUSABLE -- ' + why}")
 
 
 # ==========================================================================
