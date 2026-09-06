@@ -430,7 +430,7 @@ def test_manifests_are_valid_json_on_disk(store):
 
 def test_adapters_import_without_their_frameworks():
     from daftar import adapters
-    assert set(adapters.registry.all()) == {"jaxley", "cpm", "meltingpot"}
+    assert set(adapters.registry.all()) == {"jaxley", "cpm", "meltingpot", "brian2"}
     for name in adapters.registry.all():
         assert isinstance(adapters.get(name).is_available(), bool)
 

@@ -352,3 +352,136 @@ def test_at_least_report_what_is_installed():
     ok, why = _jaxley_is_usable()
     if daftar.adapters.get("jaxley").is_available() and not ok:
         print(f"\nNOTE: {why}")
+
+
+# ==========================================================================
+# Brian2
+# ==========================================================================
+
+def _brian2_network(name_suffix=""):
+    """A small spiking network: neurons, random synapses, two monitors."""
+    from brian2 import (
+        Network, NeuronGroup, PopulationRateMonitor, SpikeMonitor, Synapses,
+        ms, prefs, start_scope,
+    )
+
+    prefs.codegen.target = "numpy"     # no compiler needed in CI
+    start_scope()
+    eqs = """dv/dt = (I-v)/tau : 1
+I : 1
+tau : second"""
+    G = NeuronGroup(50, eqs, threshold="v>1", reset="v=0", name="G")
+    G.I = "1.5 + 0.5*rand()"
+    G.tau = 10 * ms
+    S = Synapses(G, G, on_pre="v_post += 0.05", name="S")
+    S.connect(p=0.05)
+    return Network(G, S, SpikeMonitor(G, name="spikes"),
+                   PopulationRateMonitor(G, name="rate"))
+
+
+@_require("brian2")
+def test_brian2_records_the_resolved_integration_method(store):
+    from brian2 import ms
+
+    from daftar.adapters import brian2 as b2a
+
+    with daftar.track("net", seed=42, store=store) as run:
+        b2a.run_network(_brian2_network(), 50 * ms, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    # The default is a candidate *list*; the winner is stored nowhere in Brian2.
+    assert m.get("param.group.G.method_choice").startswith("(")
+    assert m.get("param.group.G.method_resolved") == "exact"
+
+    # codegen.target = auto resolves differently per machine; record the winner.
+    assert m.get("param.brian2.codegen_resolved")
+    assert m.get("param.brian2.prefs.core.default_float_dtype") == "float64"
+    assert m.get("param.brian2.device") == "RuntimeDevice"
+
+    # The schedule orders thresholds/synapses/resets within a timestep.
+    assert "thresholds" in m.get("param.network.schedule")
+
+    # Connectivity is drawn, not declared: p=0.05 gives a different graph
+    # every unseeded run.
+    assert int(m.get("param.synapses.S.n_synapses")) > 0
+    assert m.get("param.group.G.N") == "50"
+    assert m.get("param.group.G.equations_sha256")
+
+    assert int(m.get("result.monitor.spikes.num_spikes")) > 0
+    assert m.get("result.monitor.rate.mean_rate_hz")
+
+
+@_require("brian2")
+def test_brian2_seed_is_applied_so_connectivity_reproduces(store):
+    """brian2.seed() is a device call; seeding numpy does not reach it.
+
+    Without it, `connect(p=0.05)` draws a different graph on every run and two
+    otherwise identical runs would differ with nothing to explain it.
+    """
+    from brian2 import ms
+
+    from daftar.adapters import brian2 as b2a
+
+    ids = []
+    for _ in range(2):
+        with daftar.track("net", seed=42, store=store) as run:
+            b2a.run_network(_brian2_network(), 50 * ms, run)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    assert a.get("seed.brian2") == "true"
+    assert a.get("param.synapses.S.n_synapses") == b.get("param.synapses.S.n_synapses")
+
+    d = daftar.diff_manifests(a, b)
+    assert not d.causes, [c.key for c in d.causes]
+    assert not d.effects, [c.key for c in d.effects]
+
+
+@_require("brian2")
+def test_brian2_method_resolution_survives_brian_caching(store):
+    """The resolved method must not vanish on the second run in a process.
+
+    Brian2 logs its choice, but `apply_stateupdater` is cached, so the log line
+    appears only the first time a set of equations is seen. Reading the log gave
+    the method on run 1 and nothing on run 2, which showed up as a spurious
+    cause in every diff. Resolution is now done directly.
+    """
+    from brian2 import ms
+
+    from daftar.adapters import brian2 as b2a
+
+    resolved = []
+    for _ in range(2):
+        with daftar.track("net", seed=1, store=store) as run:
+            b2a.run_network(_brian2_network(), 20 * ms, run)
+            rid = run.run_id
+        resolved.append(store.load(rid).get("param.group.G.method_resolved"))
+
+    assert resolved[0] == resolved[1] == "exact"
+    assert "unknown" not in resolved
+
+
+@_require("brian2")
+def test_brian2_dt_change_is_a_cause_not_a_mystery(store):
+    from brian2 import defaultclock, ms
+
+    from daftar.adapters import brian2 as b2a
+
+    with daftar.track("net", seed=42, store=store) as run:
+        b2a.run_network(_brian2_network(), 50 * ms, run)
+        a = run.run_id
+
+    defaultclock.dt = 0.05 * ms
+    try:
+        with daftar.track("net", seed=42, store=store) as run:
+            b2a.run_network(_brian2_network(), 50 * ms, run)
+            b = run.run_id
+    finally:
+        defaultclock.dt = 0.1 * ms
+
+    d = daftar.diff_manifests(store.load(a), store.load(b))
+    causes = [c.key for c in d.causes]
+    assert "param.brian2.defaultclock_dt" in causes
+    assert d.effects, "changing dt should move the spike count"
