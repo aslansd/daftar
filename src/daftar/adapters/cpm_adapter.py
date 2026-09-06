@@ -26,17 +26,18 @@ import hashlib
 from typing import Any
 
 from ..run import Run
-from .base import safe
+from .base import AVAILABLE, probe_import, safe
 
 name = "cpm"
 
 
+def availability() -> tuple[str, str]:
+    """``(status, reason)`` -- see ``adapters.base.probe_import``."""
+    return probe_import("cpm")
+
+
 def is_available() -> bool:
-    try:
-        import cpm  # noqa: F401
-        return True
-    except Exception:
-        return False
+    return availability()[0] == AVAILABLE
 
 
 # --------------------------------------------------------------------------

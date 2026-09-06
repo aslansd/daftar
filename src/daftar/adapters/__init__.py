@@ -8,7 +8,10 @@ at module load.
 from __future__ import annotations
 
 from . import brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter
-from .base import Adapter, AdapterRegistry, record_optional, safe
+from .base import (
+    AVAILABLE, BROKEN, MISSING, Adapter, AdapterRegistry, probe_import,
+    record_optional, safe,
+)
 
 registry = AdapterRegistry()
 registry.register("jaxley", jaxley_adapter)
@@ -27,6 +30,24 @@ def available() -> list[str]:
     return registry.available()
 
 
+def status() -> dict[str, tuple[str, str]]:
+    """``{adapter: (status, reason)}`` for every registered adapter.
+
+    Distinguishes an absent framework from a broken one. A framework that is
+    installed but fails to import -- an incompatible NumPy, a missing shared
+    library -- is a situation the user can fix, and it must not be reported the
+    same way as one they simply have not installed.
+    """
+    out: dict[str, tuple[str, str]] = {}
+    for name in registry.all():
+        mod = registry.get(name)
+        try:
+            out[name] = mod.availability()
+        except Exception as exc:  # pragma: no cover - defensive
+            out[name] = (BROKEN, f"{type(exc).__name__}: {exc}")
+    return out
+
+
 def get(name: str):
     return registry.get(name)
 
@@ -36,4 +57,5 @@ __all__ = [
     "jaxley", "cpm", "meltingpot", "brian2",
     "jaxley_adapter", "cpm_adapter", "meltingpot_adapter", "brian2_adapter",
     "Adapter", "AdapterRegistry", "safe", "record_optional",
+    "status", "probe_import", "AVAILABLE", "MISSING", "BROKEN",
 ]

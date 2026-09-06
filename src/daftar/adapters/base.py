@@ -80,6 +80,39 @@ def safe(fn, default=None):
         return default
 
 
+#: An adapter's target framework is in one of three states, and conflating the
+#: last two is how a broken environment gets mistaken for an absent one.
+AVAILABLE = "available"
+MISSING = "missing"
+BROKEN = "broken"
+
+
+def probe_import(module_name: str) -> tuple[str, str]:
+    """Try to import a framework. Returns ``(status, reason)``.
+
+    ``ImportError`` means the package is not installed, which is ordinary and
+    uninteresting. **Any other exception means it is installed and broken** --
+    an incompatible NumPy, a missing shared library, a version clash with
+    another package. Those two cases need different responses from the user and
+    must not look identical.
+
+    This distinction exists because a bare ``try: import x except: False``
+    reports a broken install as an absent one. The test suite then skips
+    quietly, the adapter is never exercised, and nothing anywhere says why.
+    """
+    try:
+        __import__(module_name)
+        return AVAILABLE, ""
+    except ImportError as exc:
+        # A broken C extension also raises ImportError, so check the message.
+        text = str(exc)
+        if "No module named" in text:
+            return MISSING, "not installed"
+        return BROKEN, f"{type(exc).__name__}: {text}"
+    except Exception as exc:
+        return BROKEN, f"{type(exc).__name__}: {exc}"
+
+
 def record_optional(run: Run, key: str, fn, *, kind: str = "param") -> None:
     """Record ``fn()`` under ``key``, or note that it could not be read."""
     value = safe(fn, default="<unavailable>")

@@ -35,7 +35,7 @@ import re
 from typing import Any
 
 from ..run import Run
-from .base import safe
+from .base import AVAILABLE, probe_import, safe
 
 name = "brian2"
 
@@ -49,12 +49,13 @@ _METHOD_PATTERNS = (
 )
 
 
+def availability() -> tuple[str, str]:
+    """``(status, reason)`` -- see ``adapters.base.probe_import``."""
+    return probe_import("brian2")
+
+
 def is_available() -> bool:
-    try:
-        import brian2  # noqa: F401
-        return True
-    except Exception:
-        return False
+    return availability()[0] == AVAILABLE
 
 
 def _sha(text: str) -> str:

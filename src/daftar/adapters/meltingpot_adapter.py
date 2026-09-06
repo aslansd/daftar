@@ -27,17 +27,18 @@ import hashlib
 from typing import Any, Callable, Sequence
 
 from ..run import Run
-from .base import safe
+from .base import AVAILABLE, probe_import, safe
 
 name = "meltingpot"
 
 
+def availability() -> tuple[str, str]:
+    """``(status, reason)`` -- see ``adapters.base.probe_import``."""
+    return probe_import("meltingpot")
+
+
 def is_available() -> bool:
-    try:
-        import meltingpot  # noqa: F401
-        return True
-    except Exception:
-        return False
+    return availability()[0] == AVAILABLE
 
 
 def _config_hash(config: Any) -> str:

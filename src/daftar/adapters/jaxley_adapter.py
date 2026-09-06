@@ -22,7 +22,7 @@ import sys
 from typing import Any
 
 from ..run import Run
-from .base import safe
+from .base import AVAILABLE, probe_import, safe
 
 name = "jaxley"
 
@@ -38,12 +38,13 @@ INTEGRATE_DEFAULTS = {
 }
 
 
+def availability() -> tuple[str, str]:
+    """``(status, reason)`` -- see ``adapters.base.probe_import``."""
+    return probe_import("jaxley")
+
+
 def is_available() -> bool:
-    try:
-        import jaxley  # noqa: F401
-        return True
-    except Exception:
-        return False
+    return availability()[0] == AVAILABLE
 
 
 def _jax_config(run: Run) -> None:
