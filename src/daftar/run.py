@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import capture
+from . import capture, notebook
 from .manifest import (
     NS_CODE, NS_COST, NS_ENV, NS_INPUT, NS_META, NS_OUTPUT, NS_PARAM,
     NS_RESULT, NS_SEED, Manifest,
@@ -87,6 +87,7 @@ class Run:
         entrypoint: str | None = None,
         capture_env: bool = True,
         capture_git: bool = True,
+        cell_source: str | None = None,
     ):
         self.run_id = _new_run_id()
         self.manifest = Manifest(run_id=self.run_id)
@@ -101,6 +102,7 @@ class Run:
         self._entrypoint = entrypoint
         self._notes = notes
         self._tags = tags or []
+        self._cell_source = cell_source
         self._initial_params = dict(params or {})
 
     def _git_excludes(self) -> list[str]:
@@ -128,7 +130,26 @@ class Run:
         if self._tags:
             m.set(f"{NS_META}.tags", sorted(self._tags))
 
-        m.set(f"{NS_CODE}.entrypoint", self._entrypoint or _caller_entrypoint())
+        # Notebook context first: it decides what the entrypoint should be.
+        nb = notebook.notebook_context(self._cell_source)
+        if nb:
+            m.set_many(NS_CODE, nb)
+
+        m.set_many(NS_META, notebook.session_meta())
+
+        entry = self._entrypoint
+        if entry is None:
+            if nb:
+                # "<ipython-input-5-a1b2c3>" identifies nothing, and In[N]
+                # changes every time you re-run the same cell -- which would
+                # make the entrypoint a spurious cause in every diff. The cell
+                # hash is stable across re-runs and distinct between cells.
+                cell_hash = nb.get("cell_sha256")
+                entry = (f"notebook::cell[{cell_hash}]" if cell_hash
+                         else "notebook::cell")
+            else:
+                entry = _caller_entrypoint()
+        m.set(f"{NS_CODE}.entrypoint", entry)
         m.set(f"{NS_CODE}.argv", " ".join(sys.argv))
         if self._capture_git:
             # Exclude our own store, so using daftar does not make the repo
@@ -156,6 +177,9 @@ class Run:
         # imported, so this is the set that actually mattered.
         if self._capture_env:
             m.set_many(NS_ENV, capture.environment())
+            extras = notebook.environment_extras()
+            if extras:
+                m.set_many(NS_ENV, extras)
 
         if error is not None:
             m.set(f"{NS_META}.error_type", type(error).__name__)
@@ -260,6 +284,7 @@ def track(
     entrypoint: str | None = None,
     capture_env: bool = True,
     capture_git: bool = True,
+    _cell_source: str | None = None,
 ) -> _TrackContext:
     """Track a block of code.
 
@@ -277,6 +302,7 @@ def track(
         label=label, params=params, seed=seed, notes=notes, tags=tags,
         store=store, entrypoint=entrypoint,
         capture_env=capture_env, capture_git=capture_git,
+        cell_source=_cell_source,
     ))
 
 

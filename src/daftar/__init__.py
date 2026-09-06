@@ -30,7 +30,18 @@ __all__ = [
     "sweep", "grid", "SweepResult",
     "plan_replay", "ReplayPlan",
     "export_bundle", "load_bundle",
-    "adapters",
+    "adapters", "notebook", "load_ipython_extension",
 ]
 
 from . import adapters  # noqa: E402  (needs the names above)
+from . import notebook  # noqa: E402
+
+
+def load_ipython_extension(ipython):  # pragma: no cover - needs a live kernel
+    """Register the ``%%daftar`` cell magic.
+
+    ``%load_ext daftar`` looks for this name on the *package root*, not on a
+    submodule, so it has to live here even though the implementation is in
+    ``daftar.notebook``.
+    """
+    notebook.load_ipython_extension(ipython)

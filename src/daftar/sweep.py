@@ -211,6 +211,21 @@ def plan_replay(manifest: Manifest, *, check_current: bool = True) -> ReplayPlan
     if not commit:
         warnings.append("run was not made inside a git repository")
 
+    if manifest.get("code.notebook") == "true":
+        cell_hash = manifest.get("code.cell_sha256", "unknown")
+        n_prior = manifest.get("code.session_n_cells", "unknown")
+        warnings.append(
+            f"run happened in a notebook cell (sha256 {cell_hash}) after "
+            f"{n_prior} other cells had executed in that session; the result "
+            f"depends on all of them and the .ipynb on disk records file order, "
+            f"not execution order"
+        )
+        if not manifest.get("code.commit"):
+            warnings.append(
+                "no repository, so the notebook itself is not version-pinned; "
+                "the exported bundle contains the cell source that actually ran"
+            )
+
     if manifest.get("seed.was_explicit") == "false":
         warnings.append(
             "seed was auto-generated rather than chosen; it was recorded and "
@@ -322,6 +337,13 @@ def export_bundle(
         zf.writestr("README.md", readme)
         zf.writestr("manifest.json", manifest.to_json())
         zf.writestr("fields.tsv", _fields_tsv(manifest))
+
+        # For a notebook run this is the most valuable file in the archive: the
+        # cell as it was when it ran. The notebook on disk has almost certainly
+        # been edited since, and no commit captures it.
+        cell = manifest.get("code.cell_source")
+        if cell:
+            zf.writestr("cell.py", cell)
 
         for ns, flag, folder in (
             ("input", include_inputs, "inputs"),
