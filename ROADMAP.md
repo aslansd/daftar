@@ -1,61 +1,43 @@
-# Adapter roadmap
+# Roadmap
 
-## Status: all three adapters verified against live frameworks
+## Where this stands
+
+Four adapters, all verified against live installed frameworks. Notebook and
+Colab support. 0.3.3 on PyPI, zero runtime dependencies, Apache 2.0.
+
+| | Status |
+|---|---|
+| Core: manifests, diff verdicts, sweeps, replay, export, CLI | shipped |
+| Jaxley adapter | verified live |
+| cpm adapter | verified live |
+| MeltingPot adapter | verified live |
+| Brian2 adapter | verified live |
+| Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
+| `daftar doctor` | shipped |
 
 ```
-tests/test_adapters_live.py::test_jaxley_records_morphology_and_solver_defaults PASSED
-tests/test_adapters_live.py::test_jaxley_same_config_reproduces                PASSED
-tests/test_adapters_live.py::test_cpm_records_bounds_priors_and_restarts       PASSED
-tests/test_adapters_live.py::test_cpm_parameters_alone_can_be_described        PASSED
-tests/test_adapters_live.py::test_meltingpot_records_config_roles_and_returns  PASSED
-tests/test_adapters_live.py::test_meltingpot_scenario_records_bot_checkpoints  PASSED
+tests/test_core.py            44 passed
+tests/test_notebook.py        15 passed
+tests/test_adapters_live.py   11 (skip whatever is absent)
 ```
 
-Jaxley (from git), cpm-toolbox 0.25.6, and dm-meltingpot 2.4.0 with dmlab2d
-1.0.0. The MeltingPot install was the hard one, as expected, and it worked.
-
-```bash
-pip install -e ".[all]"
-pytest tests/test_adapters_live.py -v
-```
-
-`tests/test_adapters_live.py` runs real workloads through each adapter and skips
-cleanly when a framework is absent. It exists because **adapters fail silently
-by design**: `safe()` turns a renamed attribute into `<unavailable>` in the
-manifest rather than crashing a four-hour simulation. That is the right
-behaviour and it means a broken adapter looks fine until someone reads a
-manifest. Only a live run catches it. Re-run this after every framework upgrade,
-not only at release.
-
-Re-run this after every framework upgrade, not only at release. Adapters fail
-silently by design: `safe()` turns a renamed attribute into `<unavailable>` in
-the manifest rather than crashing a long simulation. That is correct behaviour
-and it means a broken adapter looks fine until someone reads a manifest. Only a
-live run catches it.
-
-Note that MeltingPot is installed editable from a local clone. That is fine for
-development but shows up in every manifest as
-`env.dm_meltingpot.source = editable:file:///...`, and `daftar replay` now warns
-that nobody else can fetch it. If you want manifests others can act on, install
-the release instead once your platform has a wheel.
+The initial version is done. Everything below is about what comes next, and the
+first section is the one that matters most.
 
 ---
 
-## The uncomfortable part: you probably should not write more adapters yet
+## The uncomfortable part: stop adding adapters
 
-With all three verified, the initial version is done. Everything below is about
-what comes *after* the work that actually matters.
-
-Your month-12 gate is **200 GitHub stars and 5 external contributors**. Notice
+The month-12 gate is **200 GitHub stars and 5 external contributors**. Notice
 what it does not say: number of adapters. Adapter count is a vanity metric — it
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Three adapters with zero users and eight adapters with zero users are the same
+Four adapters with zero users and eight adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
-This matters more for you than for most people. The largest risk in the
+This matters more here than for most projects. The largest risk in the
 feasibility plan was focus — 25 repositories, 150+ courses, four to six new
 projects a month, almost all marked "Supervisor: N/A". Expanding the adapter
 list is exactly what that pattern feels like from the inside: productive,
@@ -63,35 +45,45 @@ technical, and a way of not doing the harder thing.
 
 **The harder thing, in order:**
 
-1. Run daftar across three of your own repos, unmodified, for a month. Not a
-   demo — actual work where you would be annoyed if it got in the way.
-2. Open the `cpm` upstream issue and offer the integration. A named integration
-   with a freshly published PLOS Comp Biol toolbox buys more distribution than
-   six months of adapters, and costs a week.
-3. Submit the JOSS paper.
-4. Give the SNUFA and Neuromatch talks.
-5. Get five people who are not you to use it.
+1. **Run daftar across three of your own repos, unmodified, for a month.** Not a
+   demo — actual work where you would be annoyed if it got in the way. This is
+   the month-7 milestone and it is still open. It is the only real test of
+   whether the API is unobtrusive enough that you keep using it when nobody is
+   watching.
+2. **Open the cpm upstream issue.** The SciPy `disp` bug breaks cpm for every
+   user who upgrades, and the fix is a few lines. Offering the PR turns the
+   later provenance conversation into one between contributors rather than a
+   cold request. This is your best available opener with any maintainer.
+3. **Do the thirty discovery interviews.** Stage 0 never happened. Without them
+   you are guessing at which sentence makes a researcher lean forward — and you
+   would be guessing in your one good shot at each community.
+4. **Submit to pyOpenSci.** Their guidance is explicit that review should come
+   *before* the software paper, since feedback often changes the API. Accepted
+   packages are fast-tracked through JOSS, so it is the efficient route to the
+   month-12 paper rather than a detour from it.
+5. **Give the SNUFA and Neuromatch talks.** You have presented at both. A tool
+   talk lands differently from a results talk.
 
 Write the next adapter when a *user* asks for it. That request is also your
-first piece of evidence that anyone cares.
+first evidence that anyone cares.
 
 ---
 
-## The selection rule
+## When the time comes: the selection rule
 
-When the time comes, an adapter is worth writing only if all five hold:
+An adapter is worth writing only if all five hold:
 
 1. **It records something a generic tracker cannot infer.** The bar from
    `adapters/base.py`: does it capture something the researcher would have
-   forgotten? An adapter that calls `log_params(kwargs)` is not worth the
-   import.
+   forgotten? An adapter that calls `log_params(kwargs)` is not worth the import.
 2. **The community feels the pain acutely.** Long runs, many parameters, results
    that visibly move between sessions.
 3. **You can reach that community.** You have standing in comp-neuro through
-   eLife, SNUFA, Neuromatch, and Mathematics of Neuroscience. You have none in,
-   say, computational chemistry. An adapter you cannot distribute is a hobby.
+   eLife, SNUFA, Neuromatch and Mathematics of Neuroscience. An adapter you
+   cannot distribute is a hobby.
 4. **The framework is stable enough not to rot.** Every adapter is a maintenance
-   liability against someone else's release schedule.
+   liability against someone else's release schedule — and three of the four
+   existing ones have already broken against a dependency.
 5. **It stays inside the envelope.** Unregulated, non-dual-use, Python, runs on
    a laptop.
 
@@ -99,109 +91,78 @@ When the time comes, an adapter is worth writing only if all five hold:
 
 ## Ranked candidates
 
-### Tier 1 — same community, same conferences, warm introductions
+### Tier 1
 
-**1. Brian2** — spiking neural network simulation.
-
-The strongest next pick. Brian2's users *are* the SNUFA audience you already
-presented to, and it has a textbook example of hidden state: the code-generation
-target. The same model run under `numpy`, `cython`, or `cpp_standalone` produces
-subtly different numerics, and nothing in the user's script records which one
-ran. Add `defaultclock.dt`, the unit system, `Network` object composition, and
-`seed()` semantics, and the adapter has plenty to justify itself.
-
-**2. sbi** — simulation-based inference.
+**1. sbi** — simulation-based inference.
 
 Note the ecosystem adjacency: **sbi and Jaxley both come from the Macke lab.**
-Same maintainers, same users, same conferences. If your Jaxley adapter lands
-with anyone, sbi is the natural neighbour and the introduction is warm rather
+Same maintainers, same users, same conferences. With the Jaxley adapter shipped
+and verified, sbi is the natural neighbour and the introduction is warm rather
 than cold. The hidden state is substantial — density estimator architecture,
 `num_simulations`, number of rounds, the proposal at each round, embedding net.
 Posterior estimates move under all of it and none of it is in the call.
 
-**3. NEURON / NetPyNE** — the incumbent in biophysical modelling.
+**2. NEURON / NetPyNE** — the incumbent in biophysical modelling.
 
 The largest install base in the beachhead by a wide margin, and the worst
-provenance situation in it. Compiled `.mod` mechanism files are the specific
-prize: `nrnivmodl` produces a binary whose provenance is invisible to everything,
-and a stale compiled mechanism silently producing old results is a genuinely
-common and genuinely painful failure. Hashing the `.mod` sources and the
-compiled library would be the single most valuable thing any adapter here does.
+provenance situation in it. Compiled `.mod` mechanism files are the prize:
+`nrnivmodl` produces a binary whose provenance is invisible to everything, and a
+stale compiled mechanism silently producing old results is common and painful.
+Hashing the `.mod` sources and the compiled library would be the single most
+valuable thing any adapter here does.
 
-Harder to write than Brian2 — hoc, C++, and a much older API surface. Worth it
-only once something in Tier 1 has users.
+Harder than Brian2 — hoc, C++, and a much older API surface.
 
-### Tier 2 — bigger audience, one thing to think about
+### Tier 2
 
-**4. MNE-Python** — EEG/MEG analysis.
+**3. MNE-Python** — EEG/MEG analysis.
 
 Much larger user base than Jaxley, cpm and Brian2 combined, and preprocessing is
 a notorious provenance disaster: filter settings, montage, re-referencing, and
-above all **manually rejected ICA components**, which are a human decision that
-usually exists only in someone's memory. Recording which components were
-excluded, by index and by hand, would be immediately valuable.
+above all **manually rejected ICA components**, a human decision that usually
+exists only in someone's memory.
 
-**An update to the feasibility plan.** That plan deferred fMRI/EEG because human
-neuroimaging is health data — GDPR special category, IRB-bound — and that made
-it a bad *vertical* when the product was a hosted cloud. That objection largely
-dissolves under the current architecture. daftar is local, offline, and never
-transmits data; an adapter records provenance about an analysis without ever
-touching, storing, or moving a subject's recordings. The regulatory risk lived
-in hosting, and you are not hosting.
+The original feasibility plan deferred fMRI/EEG because human neuroimaging is
+health data. That objection largely dissolves under the current architecture:
+daftar is local, offline, and never transmits data, so an adapter records
+provenance about an analysis without touching a subject's recordings. The
+regulatory risk lived in hosting, and there is no hosting.
 
-This is a real consequence of the pivot and it re-opens the one domain where you
-have the deepest expertise. Do not act on it yet — it is a Tier 2 item for a
-reason — but it should go back on the list.
+### Tier 3
 
-### Tier 3 — planned, later
-
-**5. Concordia** — the strategic one, and the reason to do it last.
+**4. Concordia** — the strategic one, and the reason to do it last.
 
 Every agent step calls `LanguageModel.sample_text()`, so `replay` cannot mean
 what it means elsewhere. The right contract is different: wrap the model, hash
 every `(prompt, response)` pair in order, and have `diff` report the first step
 at which two runs diverged. That makes Concordia the strongest demonstration of
 the whole thesis — LLM-driven simulation is the case where nobody can currently
-audit anything — but it needs the deterministic adapters to have users first,
-or it is a clever demo attached to an unused tool.
+audit anything — but it needs the deterministic adapters to have users first, or
+it is a clever demo attached to an unused tool.
 
 ### Not on the list
 
-- **Generic PyTorch / scikit-learn** — this is what W&B and MLflow already do
-  well and for free. Do not compete on their ground.
+- **Generic PyTorch / scikit-learn** — what W&B and MLflow already do well and
+  for free. Do not compete on their ground.
 - **Nilearn / fMRIPrep** — fMRIPrep already emits good BIDS-derivative
-  provenance. Adding a second layer helps nobody.
-- **MuJoCo, Genesis, Isaac** — robotics customers are defence-adjacent, which
-  fails criterion 4 of the original plan.
-- **CFD / HydroGym** — same reason, plus their baselines needed 150,000 GPU-hours.
-- **EDA / chip design** — fails two criteria simultaneously. Settled earlier.
+  provenance. A second layer helps nobody.
+- **MuJoCo, Genesis, Isaac** — robotics customers are defence-adjacent.
+- **CFD / HydroGym** — same, plus baselines needing 150,000 GPU-hours.
+- **EDA / chip design** — fails two criteria simultaneously.
 
 ---
 
-## The thing that probably beats all of them
+## Non-adapter work worth more than a fifth adapter
 
-**A Jupyter and Colab integration, before any fourth adapter.**
+**A pytest plugin.** Runs inside a test suite tracked automatically. Small, and
+it makes daftar useful in CI as a regression check on your own results, which
+`diff`'s exit code already supports.
 
-A large share of your target users do not run scripts. They live in notebooks,
-and notebooks are precisely where provenance dies:
+**Richer notebook capture.** The current implementation hashes the executed cell
+and the session history, which is the hard part. Detecting that a cell has been
+*modified since it last ran* would be a natural extension and would catch the
+single most common way a notebook result becomes unreproducible.
 
-- The git commit is meaningless — the notebook is one file whose cells were
-  executed in an order nobody recorded.
-- On Colab there is no repository at all, so `code.*` is nearly empty.
-- Cells get edited and re-run, so the code that produced a result may no longer
-  exist anywhere.
-
-None of that is solved by another adapter. What would help: hash the executed
-cell source rather than the file, record execution counts and the actual
-execution order, and detect when a cell has been modified since it last ran. A
-`%%daftar` magic that captures the cell body verbatim would be genuinely novel —
-no existing tool does this well — and it applies to every framework at once
-instead of one.
-
-If you write exactly one more thing after verifying the three adapters, make it
-this. It multiplies the value of everything already built and it reaches the
-notebook-first majority of the people you interviewed.
-
-Second on that same list: a **pytest plugin**, so runs inside a test suite are
-tracked automatically. Small, and it makes daftar useful in CI as a regression
-check on your own results, which `diff`'s exit code already supports.
+**A run browser.** `daftar list` and `daftar vary` are adequate for tens of runs
+and poor for hundreds. A small local HTML view over the manifest store would
+cost little and is the obvious first paid feature.

@@ -9,16 +9,23 @@ past run can be rebuilt.
 
 Experiment trackers solved this for deep learning, where an experiment is
 `model.fit()`. They do not help when the experiment is a Hodgkin–Huxley
-simulation of 302 neurons, a hierarchical fit across 60 participants, or a
-200-episode multi-agent sweep. Those runs have no epochs, no loss curves, and no
-checkpoints. They have parameter grids, solver tolerances, random seeds, and
-derived quantities.
+simulation of 302 neurons, a hierarchical fit across 60 participants, a spiking
+network, or a 200-episode multi-agent sweep. Those runs have no epochs, no loss
+curves, and no checkpoints. They have parameter grids, solver tolerances, random
+seeds, and derived quantities.
 
 **No dependencies. Runs offline. No account, no server, no network call.**
 
 ```bash
 pip install daftar
 ```
+
+Python 3.10+. Apache 2.0.
+
+[PyPI](https://pypi.org/project/daftar/) · [INSTALL](INSTALL.md) ·
+[TESTING](TESTING.md) · [PUBLISHING](PUBLISHING.md) ·
+[TROUBLESHOOTING](TROUBLESHOOTING.md) · [ROADMAP](ROADMAP.md) ·
+[CHANGELOG](CHANGELOG.md)
 
 ---
 
@@ -68,10 +75,9 @@ platform to save and re-run a computational experiment.
 Every one of those tools asked scientists to change how they work today in
 exchange for a benefit arriving in three years. That trade never closes.
 
-`daftar` inverts it. `diff` answers a question people ask weekly — *why is
-this number different from Tuesday's?* — and provenance arrives as a free side
-effect of a tool they already wanted. Reproducibility is the by-product, not
-the pitch.
+`daftar` inverts it. `diff` answers a question people ask weekly — *why is this
+number different from Tuesday's?* — and provenance arrives as a free side effect
+of a tool they already wanted. Reproducibility is the by-product, not the pitch.
 
 Three consequences of taking that seriously:
 
@@ -89,38 +95,31 @@ Three consequences of taking that seriously:
 
 | Namespace | Contents |
 |---|---|
-| `code.*` | git commit, branch, dirty flag, **hash of uncommitted changes**, entrypoint, argv |
+| `code.*` | git commit, branch, dirty flag, **hash of uncommitted changes**, entrypoint, argv; in notebooks, the **cell hash and session history hash** |
 | `param.*` | everything you chose, including defaults you never passed |
 | `seed.*` | seeds **applied** to `random`, numpy, torch, **Brian2's device RNG**; the JAX root key |
 | `input.*` | sha256 and size of every declared input file or directory |
-| `env.*` | interpreter, OS, versions of packages the run imported, **and where each was installed from** |
+| `env.*` | interpreter, OS, package versions, **and where each package was installed from** |
 | `result.*` | scalar outcomes worth comparing |
 | `output.*` | sha256 of produced files |
 | `cost.*` | wall clock, host, cpu count |
 
-Two of these are less obvious than they look.
+Three of these are less obvious than they look.
 
 **Seeds are applied, not merely recorded.** A tool that only writes down the
 seed is close to useless: if the code seeded itself from the clock, recording
 that fact tells you the run is irreproducible but does nothing to fix it.
-`track(seed=...)` sets every RNG it can reach, then records what it set. If you
-pass no seed, one is generated, applied, and recorded — an accidental seed that
-is written down is reproducible; a deliberate one that isn't, is not.
+`track(seed=...)` sets every RNG it can reach — including Brian2's device RNG,
+which numpy seeding does not touch — then records what it set. If you pass no
+seed, one is generated, applied, and recorded.
 
-**A version string is not an identity.** jaxley 0.13.0 on PyPI is broken with
-current JAX; jaxley `main` fixes it and still calls itself 0.13.0. Recording only
-`env.jaxley = 0.13.0` would call those two environments identical when one works
-and one does not. daftar reads PEP 610 `direct_url.json` and adds
-`env.<pkg>.source` for anything not installed from an index:
-
-```
-env.jaxley          0.13.0
-env.jaxley.source   git+https://github.com/jaxleyverse/jaxley.git#2638cca2665e
-```
-
-Index installs record nothing, which is the right default: absence means "from
-PyPI". `daftar replay` then emits a `pip install` line that actually works,
-pinning index packages by version and VCS packages by URL and commit.
+**A version string is not an identity.** jaxley 0.13.0 on PyPI was broken with
+current JAX; jaxley `main` fixed it and still called itself 0.13.0. Recording
+only `env.jaxley = 0.13.0` would call those two environments identical when one
+works and one does not. daftar reads PEP 610 `direct_url.json` and adds
+`env.<pkg>.source` for anything not installed from an index. `daftar replay`
+then emits a `pip install` line that actually works, pinning index packages by
+version and VCS packages by URL and commit.
 
 **Dirty working trees get their diff hashed.** "Dirty" alone tells you there
 were uncommitted edits but not whether they were the *same* edits. Hashing the
@@ -129,7 +128,7 @@ case during a debugging session.
 
 ---
 
-## The four commands
+## Commands
 
 ```bash
 daftar list                    # what has been run
@@ -138,11 +137,12 @@ daftar diff r-4f21ab r-88c07e  # what changed, and whether it mattered
 daftar vary -l my-sweep        # which fields differ across many runs
 daftar replay r-4f21ab         # what it would take to reproduce this
 daftar export r-4f21ab -o run.zip
-daftar doctor                     # which adapters work here, and why not
+daftar doctor                  # which adapters work here, and why not
 ```
 
 `diff` exits 0 if the second run reproduces the first and 1 otherwise, so it
-works in CI as a regression check on your own results.
+works in CI as a regression check on your own results. `doctor` exits 1 if any
+adapter's framework is installed but broken.
 
 ### Verdicts
 
@@ -161,7 +161,7 @@ combination implies:
 
 That fourth verdict is the valuable one. An unseeded RNG buried three libraries
 deep can survive for years because nobody ever compares two runs precisely
-enough to notice. `daftar` reports it as a finding rather than a glitch.
+enough to notice. daftar reports it as a finding rather than a glitch.
 
 ---
 
@@ -179,46 +179,6 @@ Each grid point is a separate run with its own manifest — not one run with a
 nested table. That means a sweep point and a run you did by hand last Tuesday
 are the same kind of object, and `diff` works across them. A sweep that fails at
 point 3 of 40 keeps the first two results.
-
----
-
-## Replay
-
-`daftar replay` prints a plan, and deliberately does **not** execute
-anything. Re-running arbitrary recorded code would mean this package executes
-whatever a manifest tells it to, and it still could not restore your CUDA
-driver. What it does honestly is state the target state, check the current state
-against it, and list every discrepancy:
-
-```
-Replay plan for r-4f21ab
-
-  entrypoint   sim/celegans_hh.py::run_network
-  commit       9c1d0ae
-  seed         42
-
-  BLOCKERS -- this run cannot be reproduced as recorded:
-    - input file changed since the run: data/connectome.csv
-      (was a7f39b21, now 3e0c77af)
-
-  To reproduce:
-    git checkout 9c1d0ae
-    pip install numpy==2.4.6 "jaxley @ git+https://github.com/jaxleyverse/jaxley.git@2638cca"
-```
-
-Packages installed from a local path or in editable mode are listed as comments
-rather than requirements, and raise a warning: nobody else can fetch
-`file:///Users/you/Downloads/thing`, and a version pin would not reproduce it.
-
----
-
-## Export
-
-`daftar export` writes a zip containing `README.md`, `manifest.json`,
-`fields.tsv`, and the referenced input and output files. The README is generated
-in plain English at the archive root, so a successor learns what they are
-looking at without installing anything. A bundle that needs our tool to be
-understood defeats its own purpose.
 
 ---
 
@@ -267,6 +227,46 @@ See `examples/daftar_in_notebooks.ipynb`, which runs on Colab.
 
 ---
 
+## Replay
+
+`daftar replay` prints a plan, and deliberately does **not** execute anything.
+Re-running arbitrary recorded code would mean this package executes whatever a
+manifest tells it to, and it still could not restore your CUDA driver. What it
+does honestly is state the target state, check the current state against it, and
+list every discrepancy:
+
+```
+Replay plan for r-4f21ab
+
+  entrypoint   sim/celegans_hh.py::run_network
+  commit       9c1d0ae
+  seed         42
+
+  BLOCKERS -- this run cannot be reproduced as recorded:
+    - input file changed since the run: data/connectome.csv
+      (was a7f39b21, now 3e0c77af)
+
+  To reproduce:
+    git checkout 9c1d0ae
+    pip install numpy==2.4.6 "jaxley @ git+https://github.com/jaxleyverse/jaxley.git@2638cca"
+```
+
+Packages installed from a local path or in editable mode are listed as comments
+rather than requirements, and raise a warning: nobody else can fetch
+`file:///Users/you/Downloads/thing`, and a version pin would not reproduce it.
+
+---
+
+## Export
+
+`daftar export` writes a zip containing `README.md`, `manifest.json`,
+`fields.tsv`, and the referenced input and output files — plus `cell.py` for
+notebook runs. The README is generated in plain English at the archive root, so
+a successor learns what they are looking at without installing anything. A
+bundle that needs our tool to be understood defeats its own purpose.
+
+---
+
 ## Framework adapters
 
 The core tracks any Python function. An adapter earns its existence only by
@@ -275,26 +275,26 @@ knowing something a generic tracker cannot infer.
 | Adapter | Records what you'd otherwise lose |
 |---|---|
 | `jaxley` | morphology (compartments, branches, channels, synapses), `jx.integrate` defaults you never passed, `jax_enable_x64`, backend |
-| `cpm` | parameter **bounds and priors**, estimator and its scipy method/tolerance, per-participant convergence counts, cohort hash |
-| `brian2` | **the integration method Brian2 actually chose** (its default is a candidate list, and the winner is stored nowhere), resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
+| `cpm` | parameter **bounds and priors** (resolved to the scipy distribution and its arguments), estimator and its scipy settings, restart counts and the initial guesses themselves, per-participant convergence, cohort hash |
+| `brian2` | **the integration method Brian2 actually chose** — its default is a candidate list and the winner is stored nowhere — plus resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
 | `meltingpot` | resolved substrate ConfigDict hash, roles, episode-length cap, pinned bot checkpoints, per-player returns and Gini |
 
-All three are verified against live installs by `tests/test_adapters_live.py`,
-which runs real workloads and skips cleanly when a framework is absent.
-
 ```python
-from daftar.adapters import jaxley as jxa
+from daftar.adapters import brian2 as b2a
 
-with daftar.track("hh-cell", seed=0) as run:
-    v = jxa.integrate(cell, run, t_max=10.0, delta_t=0.025)
+with daftar.track("balanced-net", seed=42) as run:
+    b2a.run_network(net, 1*second, run)
 ```
 
-Adapters never import their framework at module load, so `import daftar`
-works with none of them installed. Every probe is best-effort: a provenance tool
-that crashes a four-hour simulation because a framework renamed an attribute has
-done far more harm than the missing field was worth.
+Adapters never import their framework at module load, so `import daftar` works
+with none of them installed. Every probe is best-effort: a provenance tool that
+crashes a four-hour simulation because a framework renamed an attribute has done
+far more harm than the missing field was worth.
 
-See `examples/adapter_usage.py` for the full pattern for each.
+All four are verified against live installs by `tests/test_adapters_live.py`.
+See `examples/adapter_usage.py` for the pattern for each, and
+[INSTALL.md](INSTALL.md) for which environment each needs — they do not all fit
+in one.
 
 ### Why not Concordia
 
@@ -321,22 +321,6 @@ python examples/demo_end_to_end.py
 
 No frameworks needed. Walks through a clean reproduction, a deliberate parameter
 change, a genuine nondeterminism catch, a sweep, a replay plan, and an export.
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-pytest -q                                # core suite, no frameworks needed
-
-pip install -e ".[all]"                  # jaxley, cpm-toolbox, dm-meltingpot
-pytest tests/test_adapters_live.py -v    # adapters against real frameworks
-```
-
-Adapters fail *silently by design* -- `safe()` turns a renamed attribute into
-`<unavailable>` rather than crashing a four-hour simulation -- so adapter rot
-looks fine until someone reads a manifest. Re-run the live suite after every
-upgrade of a target framework, not only at release. See `TROUBLESHOOTING.md`
-if a framework will not install.
 
 ## Licence
 
