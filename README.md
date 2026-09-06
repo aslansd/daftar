@@ -138,6 +138,7 @@ daftar diff r-4f21ab r-88c07e  # what changed, and whether it mattered
 daftar vary -l my-sweep        # which fields differ across many runs
 daftar replay r-4f21ab         # what it would take to reproduce this
 daftar export r-4f21ab -o run.zip
+daftar doctor                     # which adapters work here, and why not
 ```
 
 `diff` exits 0 if the second run reproduces the first and 1 otherwise, so it

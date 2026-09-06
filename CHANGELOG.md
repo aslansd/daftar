@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.1
+
+**A framework that is installed but broken is no longer reported as absent.**
+Every adapter's `is_available()` was a bare `try: import x except: return False`,
+so an import that failed for *any* reason looked exactly like a package that was
+never installed. The live tests then skipped quietly and nothing said why.
+
+This surfaced with Brian2: `pip install brian2` on Python 3.11 resolves to 2.9.0
+(the newest supporting that interpreter), which calls `ndarray.ptp` — removed in
+NumPy 2.0. It imports with an `AttributeError`, the tests skipped, and the output
+was indistinguishable from Brian2 not being installed at all.
+
+Adapters now expose `availability() -> (status, reason)` with three states:
+`available`, `missing`, and **`broken`** carrying the exception. Live tests skip
+with that reason attached rather than a generic "not installed".
+
+**New: `daftar doctor`.** Reports the interpreter, the daftar version, and every
+adapter's status with the reason for any failure. Exits 1 if anything is broken,
+so it is usable in CI. It generalises the ad-hoc `diagnose_jaxley.py`.
+
+```
+daftar 0.3.1
+python 3.11.16 on Darwin arm64
+
+  brian2      BROKEN  AttributeError: type object 'numpy.ndarray' has no attribute 'ptp'
+  cpm         ok
+  jaxley      ok
+  meltingpot  ok
+```
+
+`TROUBLESHOOTING.md` documents the Brian2 / NumPy 2 / Python 3.12 trap and why
+downgrading NumPy is the wrong fix.
+
 ## 0.3.0 — Brian2
 
 Brian2 hides more of what determines the answer than any other framework daftar

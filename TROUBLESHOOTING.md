@@ -225,6 +225,54 @@ wrong".
 
 ---
 
+## Brian2: `type object 'numpy.ndarray' has no attribute 'ptp'`
+
+Brian2 is installed and imports fail. The adapter tests skip, and older daftar
+versions skipped *silently* because a broken import looked identical to an
+absent package. Run `daftar doctor` to see the difference.
+
+**The cause is a three-way version trap:**
+
+| | |
+|---|---|
+| NumPy 2.0 removed `ndarray.ptp` | you have numpy 2.x |
+| brian2 ≤ 2.9 still calls it | so it cannot import under numpy 2 |
+| brian2 ≥ 2.10 fixed it, and **requires Python ≥ 3.12** | your env is Python 3.11 |
+
+So `pip install brian2` on Python 3.11 correctly resolves to 2.9.0 — the newest
+release that supports your interpreter — and that release cannot work with the
+NumPy you have. **On Python 3.11 there is no brian2 version compatible with
+NumPy 2.x.**
+
+### Fix: a Python 3.12 environment
+
+```bash
+conda create --name daftar312 python=3.12
+conda activate daftar312
+pip install daftar brian2 jaxley cpm-toolbox pytest
+python -c "import brian2; print(brian2.__version__)"   # expect >= 2.10
+daftar doctor
+```
+
+### Why not just downgrade NumPy instead
+
+`pip install "numpy<2"` would fix Brian2 and break the rest of the environment:
+jaxley, cpm-toolbox and pandas 3.x in your setup all expect NumPy 2. Pinning
+NumPy back to satisfy one framework is how an environment becomes unreproducible
+in the way this whole package exists to detect.
+
+### If you must stay on Python 3.11
+
+Keep two environments: 3.11 for MeltingPot (whose `dmlab2d` wheel coverage is
+narrow) and 3.12 for Brian2. The adapter tests skip cleanly in whichever
+framework is absent, so both environments give a green suite.
+
+Do not attempt to have every adapter live in one environment. Four research
+frameworks with independent release schedules will eventually make that
+impossible, and the honest answer is to test each where it works.
+
+---
+
 ## MeltingPot will not install
 
 `dm-meltingpot` depends on `dmlab2d`, whose wheel coverage is narrow and weakest
@@ -267,6 +315,23 @@ installs as comments plus a warning.
 
 Manifests written by older versions are unaffected -- only the rendering was
 wrong, and re-running `daftar replay` on an old run now prints correctly.
+
+---
+
+## Which adapters actually work here?
+
+```bash
+daftar doctor
+```
+
+Reports the daftar version, the interpreter, and every adapter as `ok`,
+`not installed`, or **`BROKEN`** with the exception that caused it. Exit code is
+1 if anything is broken, so it works in CI.
+
+`BROKEN` means the framework is installed and will not import — an incompatible
+NumPy, a missing shared library, a clash with another package. That is fixable
+and worth knowing about; "not installed" usually is not. Conflating the two is
+how a broken environment goes unnoticed for weeks.
 
 ---
 
