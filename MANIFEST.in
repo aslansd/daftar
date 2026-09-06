@@ -5,4 +5,5 @@ include CHANGELOG.md
 include ROADMAP.md
 include TROUBLESHOOTING.md
 recursive-include examples *.py
+recursive-include examples *.ipynb
 recursive-include tests *.py

@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.2.0 — notebooks
+
+Notebooks are where provenance dies, and until now daftar was no better there
+than anything else. A notebook breaks the assumptions the rest of the package
+makes: the git commit is close to meaningless because a notebook is one file
+whose cells ran in an order nobody recorded; cells get edited and re-run, so the
+code that made a figure may exist in no file and no commit; and on Colab there is
+no repository at all.
+
+**Two new fields carry the weight.**
+
+`code.cell_sha256` — the source of the cell that ran, hashed *before* execution,
+so the record survives you editing the cell afterwards. That is the ordinary way
+a notebook result becomes unreproducible, and it is invisible to every
+file-based tool.
+
+`code.session_history_sha256` — every cell executed before this one, in
+execution order. **A notebook result depends on the whole session, not just the
+cell you ran.** Two runs of identical code against different session state are
+two different experiments, and nothing on disk distinguishes them. Without this
+field such a pair diffs as `nondeterministic`, which is wrong and sends you
+hunting a seeding bug that does not exist.
+
+**Nothing to switch on.** `daftar.track()` detects IPython by itself and adds
+these fields; existing notebook code gains them with no changes. IPython is
+never imported when running as a script.
+
+**`%%daftar` cell magic**, for ergonomics rather than because the automatic path
+is second class:
+
+```python
+%load_ext daftar
+
+%%daftar montecarlo seed=42
+vals = simulate(scale=scale)
+run.log_result("mean", float(vals.mean()))
+```
+
+The magic captures the cell body verbatim before running it, so the exported
+bundle contains `cell.py` — the code that actually ran. On Colab, where the VM
+is ephemeral and nothing is committed, that is often the only surviving copy.
+
+**Two fields deliberately kept out of `code.*`.** The execution count increments
+on every run, so recording it as code identity would make it a *cause* in every
+notebook diff while explaining nothing; it lives in `meta.cell_execution_count`,
+which the diff treats as neutral. And the entrypoint is keyed on the cell hash
+(`notebook::cell[f629a4b8]`) rather than `In[N]`: stable across re-runs of the
+same cell, distinct between cells, and never the useless
+`<ipython-input-5-a1b2c3>`.
+
+Colab runtimes also record the accelerator and whether Drive was mounted, since
+the same notebook on CPU and on a T4 can give different numerics and the
+assignment is not something the user pinned.
+
+**Added** `examples/daftar_in_notebooks.ipynb`, which runs on Colab and
+demonstrates the same-cell-different-history case end to end. **Added** 15
+notebook tests driven by a real IPython shell rather than mocks.
+
 ## 0.1.6
 
 Both fixes here were found by generating manifests for the website demo from

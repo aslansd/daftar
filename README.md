@@ -221,6 +221,51 @@ understood defeats its own purpose.
 
 ---
 
+## Notebooks and Colab
+
+Notebooks are the hardest case: the git commit means little when cells ran in an
+unrecorded order, edited cells overwrite the code that made your figure, and on
+Colab there is no repository at all.
+
+`track()` detects IPython automatically — existing notebook code needs no
+changes — and adds two fields:
+
+| Field | What it pins down |
+|---|---|
+| `code.cell_sha256` | The cell source, hashed **before** execution, so it survives the cell being edited afterwards |
+| `code.session_history_sha256` | Every cell executed before this one. A notebook result depends on the whole session, and nothing else records that |
+
+That second field is the one that matters. Run the same cell twice with a
+different upstream variable and daftar reports:
+
+```
+candidate causes (2)
+  code.session_history_sha256  519aae2e385c2edd  ->  477357699f00be28
+  code.session_n_cells         3  ->  6
+
+observed effects (2)
+  result.mean                  -0.00090  ->  -0.00272
+  result.std                   1.00012   ->  3.00038
+```
+
+Without it, that pair would diff as `nondeterministic` — wrong, and it would
+send you looking for a seeding bug that does not exist.
+
+There is also a cell magic, which additionally stores the cell body verbatim so
+the exported bundle contains the code that actually ran:
+
+```python
+%load_ext daftar
+
+%%daftar montecarlo seed=42
+vals = simulate(scale=scale)
+run.log_result("mean", float(vals.mean()))
+```
+
+See `examples/daftar_in_notebooks.ipynb`, which runs on Colab.
+
+---
+
 ## Framework adapters
 
 The core tracks any Python function. An adapter earns its existence only by
