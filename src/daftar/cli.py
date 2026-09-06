@@ -101,6 +101,53 @@ def cmd_vary(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    """Report the environment and every adapter's status, with reasons."""
+    import platform
+
+    from . import adapters
+    from .__version__ import __version__
+    from .adapters.base import AVAILABLE, BROKEN
+
+    print(f"daftar {__version__}")
+    print(f"python {platform.python_version()} on {platform.system()} "
+          f"{platform.machine()}")
+    print()
+
+    table = adapters.status()
+    width = max(len(n) for n in table)
+    broken = []
+    for name in sorted(table):
+        state, reason = table[name]
+        mark = {AVAILABLE: "ok", BROKEN: "BROKEN"}.get(state, "-")
+        line = f"  {name.ljust(width)}  {mark:<7}"
+        if state != AVAILABLE and reason:
+            line += f" {reason}"
+        print(line)
+        if state == BROKEN:
+            broken.append((name, reason))
+
+    if broken:
+        print()
+        print("An adapter's framework is installed but will not import. That is")
+        print("not the same as it being absent, and it is usually fixable:")
+        for name, reason in broken:
+            print(f"  - {name}: {reason}")
+        print()
+        print("See TROUBLESHOOTING.md. Common cause: the framework predates a")
+        print("major NumPy release, and the version that supports current NumPy")
+        print("needs a newer Python than this environment has.")
+
+    store = _store(args)
+    print()
+    print(f"run store: {store.dir}"
+          + ("" if store.runs_dir.exists() else "  (not initialised)"))
+    if store.runs_dir.exists():
+        print(f"runs recorded: {len(store.list_ids())}")
+
+    return 1 if broken else 0
+
+
 def cmd_reindex(args) -> int:
     n = _store(args).reindex()
     print(f"Reindexed {n} run(s).")
@@ -151,6 +198,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("vary", help="show what differs across many runs")
     s.add_argument("-l", "--label")
     s.set_defaults(func=cmd_vary)
+
+    s = sub.add_parser("doctor", help="report environment and adapter status")
+    s.set_defaults(func=cmd_doctor)
 
     s = sub.add_parser("reindex", help="rebuild the index from manifests")
     s.set_defaults(func=cmd_reindex)
