@@ -30,24 +30,12 @@ without changing a line of model code.
 from __future__ import annotations
 
 import hashlib
-import logging
-import re
 from typing import Any
 
 from ..run import Run
 from .base import AVAILABLE, probe_import, safe
 
 name = "brian2"
-
-#: ``No numerical integration method specified for group 'G', using method
-#: 'exact' (took 0.02s).`` -- and the shorter ``Group G: using numerical
-#: integration method exact``. Both are matched; the first is authoritative.
-_METHOD_PATTERNS = (
-    re.compile(r"for group '(?P<group>[^']+)', using method '(?P<method>[^']+)'"),
-    re.compile(r"Group (?P<group>\S+): using numerical integration method "
-               r"(?P<method>\S+)"),
-)
-
 
 def availability() -> tuple[str, str]:
     """``(status, reason)`` -- see ``adapters.base.probe_import``."""
@@ -65,63 +53,6 @@ def _sha(text: str) -> str:
 # --------------------------------------------------------------------------
 # capturing the resolved integration method
 # --------------------------------------------------------------------------
-
-class _MethodCapture(logging.Handler):
-    """Collects ``group -> resolved method`` from Brian2's own log output.
-
-    Reading a log is not elegant, but it is the only route: Brian2 resolves the
-    method during ``before_run`` and does not store the winner on any object.
-    The handler is attached for the duration of the run and removed afterwards,
-    and it never raises -- a logging handler that throws would take the
-    simulation down with it.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.methods: dict[str, str] = {}
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            message = record.getMessage()
-        except Exception:
-            return
-        for pattern in _METHOD_PATTERNS:
-            m = pattern.search(message)
-            if m:
-                self.methods.setdefault(m.group("group"), m.group("method"))
-                return
-
-
-class capture_methods:
-    """Attach :class:`_MethodCapture` to Brian2's logger for a block.
-
-    No longer used by :func:`run_network` -- :func:`resolve_method` reproduces
-    the selection directly, which is immune to Brian2's caching of
-    ``apply_stateupdater``. Kept as a public escape hatch for anyone who wants
-    the method as Brian2 itself reported it, and for cross-checking that our
-    resolution agrees with Brian's.
-    """
-
-    def __init__(self) -> None:
-        self.handler = _MethodCapture()
-        self._logger = logging.getLogger("brian2")
-        self._previous_level: int | None = None
-
-    def __enter__(self) -> _MethodCapture:
-        self._previous_level = self._logger.level
-        # Brian2 emits the method choice at DEBUG. Lower the level only if it
-        # would otherwise suppress the message, and restore it on exit.
-        if self._logger.level > logging.DEBUG or self._logger.level == logging.NOTSET:
-            self._logger.setLevel(logging.DEBUG)
-        self._logger.addHandler(self.handler)
-        return self.handler
-
-    def __exit__(self, *exc) -> bool:
-        self._logger.removeHandler(self.handler)
-        if self._previous_level is not None:
-            self._logger.setLevel(self._previous_level)
-        return False
-
 
 # --------------------------------------------------------------------------
 # preferences, device, clock
@@ -178,10 +109,10 @@ def resolve_method(group: Any) -> str | None:
 
     Brian2 does log the choice, but ``apply_stateupdater`` is cached, so the
     line is emitted only the first time a given set of equations is seen in a
-    process. Reading the log therefore records the method on run 1 and nothing
-    on run 2 -- which makes the field *appear* and *disappear* between runs and
-    shows up as a spurious cause in every diff. Reproducing the selection
-    directly is deterministic and immune to the cache.
+    process. Reading the log therefore recorded the method on run 1 and nothing
+    on run 2 -- making the field appear and disappear between runs, and show up
+    as a spurious cause in every diff. Reproducing the selection directly is
+    deterministic and immune to the cache.
     """
     from brian2.stateupdaters.base import (
         StateUpdateMethod, UnsupportedEquationsException,
