@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.3 — documentation and cleanup
+
+No behaviour changes. The four adapters, notebook support and the CLI are all
+verified working; this release makes the documentation match.
+
+**Documentation restructured** around the four things a user actually needs to
+do, each in its own file rather than scattered across a README:
+
+* `INSTALL.md` — installing daftar, and the per-adapter environment
+  requirements. Including the honest part: **the four target frameworks cannot
+  currently share one interpreter**, and the two-environment split that works.
+* `TESTING.md` — the three test suites, what each covers, and how to read a
+  skip. Skips have three distinct meanings and only one of them is ordinary.
+* `PUBLISHING.md` — the release sequence, trimmed to the steps that matter.
+* `TROUBLESHOOTING.md` — reorganised around what is currently open versus
+  already fixed upstream.
+* `ROADMAP.md` — updated for the shipped state.
+
+**Removed `diagnose_jaxley.py`.** jaxley 0.14.0 fixed the `jnp.clip(a_max=...)`
+incompatibility, so the script has nothing left to diagnose. `daftar doctor`
+covers the general case.
+
+**Removed the unused Brian2 log-capture path.** `capture_methods` and
+`_MethodCapture` were superseded by `resolve_method`, which reproduces Brian2's
+integration-method selection directly and is immune to its caching. Nothing
+called them and no test covered them; unused code that reads private framework
+internals is a maintenance liability, not an escape hatch.
+
 ## 0.3.2
 
 **cpm live tests now skip with an explanation instead of failing** when cpm and
