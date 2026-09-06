@@ -63,6 +63,42 @@ with daftar.track("bandit-fit", seed=7) as run:
 # and nothing in the output tells you which you have.
 '''
 
+# ---------------------------------------------------------------- Brian2 ---
+BRIAN2 = '''
+from brian2 import *
+import daftar
+from daftar.adapters import brian2 as b2a
+
+eqs = """dv/dt = (I-v)/tau : 1
+I : 1
+tau : second"""
+G = NeuronGroup(100, eqs, threshold="v>1", reset="v=0", name="G")
+G.I = "1.5 + 0.5*rand()"; G.tau = 10*ms
+S = Synapses(G, G, on_pre="v_post += 0.05", name="S"); S.connect(p=0.05)
+net = Network(G, S, SpikeMonitor(G, name="spikes"))
+
+with daftar.track("balanced-net", seed=42) as run:
+    b2a.run_network(net, 1*second, run)
+
+# Recorded automatically:
+#   group.G.method_choice   = (exact, euler, heun)   <- what was permitted
+#   group.G.method_resolved = exact                  <- what actually ran
+#   brian2.codegen_resolved = cython (auto)          <- auto means machine-dependent
+#   brian2.prefs.core.default_float_dtype = float64
+#   network.schedule        = [start, groups, thresholds, synapses, resets, end]
+#   synapses.S.n_synapses   = 496                    <- p=0.05 is drawn, not declared
+#   result.monitor.spikes.num_spikes
+#
+# method_resolved is the one to watch. Brian2's default is a candidate list, not
+# a method: a model that integrated `exact` silently falls back to `euler` after
+# an edit that makes the equations non-linear. Brian2 stores the winner nowhere
+# -- it only mentions it in a log line, once per process.
+#
+# Note also that daftar.track(seed=...) now calls brian2.seed(). Seeding numpy
+# does not reach Brian2's device RNG, so without it `connect(p=0.05)` draws a
+# different graph every run.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -120,7 +156,8 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("MeltingPot", MELTINGPOT),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2),
+        ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
     print(f"\n{'-' * 70}\nConcordia -- why it is not here yet\n{'-' * 70}{CONCORDIA_NOTE}")
