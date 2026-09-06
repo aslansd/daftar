@@ -34,10 +34,23 @@ def store(tmp_path, monkeypatch):
 
 
 def _require(name: str):
-    return pytest.mark.skipif(
-        not daftar.adapters.get(name).is_available(),
-        reason=f"{name} not installed",
-    )
+    """Skip with a reason that distinguishes absent from broken.
+
+    A framework that is installed but fails to import is a different situation
+    from one that was never installed, and the user can act on it. Reporting
+    both as "not installed" is how a broken environment goes unnoticed: the
+    suite skips quietly and nothing anywhere says why.
+    """
+    state, reason = daftar.adapters.get(name).availability()
+    if state == daftar.adapters.AVAILABLE:
+        return pytest.mark.skipif(False, reason="")
+    if state == daftar.adapters.BROKEN:
+        return pytest.mark.skipif(
+            True,
+            reason=(f"{name} is INSTALLED BUT BROKEN -- {reason}. "
+                    f"Run `daftar doctor`; see TROUBLESHOOTING.md"),
+        )
+    return pytest.mark.skipif(True, reason=f"{name} not installed")
 
 
 def _jaxley_is_usable() -> tuple[bool, str]:
@@ -340,6 +353,11 @@ def test_at_least_report_what_is_installed():
     for name in daftar.adapters.registry.all():
         mark = "yes" if name in available else "no"
         print(f"  {name:<12} {mark}")
+
+    print("\nadapter status:")
+    for name, (state, reason) in sorted(daftar.adapters.status().items()):
+        detail = f"  {reason}" if reason else ""
+        print(f"  {name:<12} {state}{detail}")
 
     print("\nframework versions:")
     for dist in ("jaxley", "jax", "jaxlib", "cpm-toolbox", "dm-meltingpot",
