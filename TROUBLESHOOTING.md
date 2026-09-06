@@ -225,6 +225,51 @@ wrong".
 
 ---
 
+## cpm: `fmin_l_bfgs_b() got an unexpected keyword argument 'disp'`
+
+cpm 0.25.6 calls:
+
+```python
+result = fmin_l_bfgs_b(objective, x0=..., bounds=bounds,
+                       args=(model, observed, loss, prior),
+                       disp=self.display, **self.kwargs)
+```
+
+SciPy deprecated `disp` and `iprint` for L-BFGS-B and **removed them in 1.18.0**.
+So cpm imports cleanly and raises the moment you fit anything.
+
+If you ran this on an older SciPy you were already warned:
+
+```
+DeprecationWarning: scipy.optimize: The `disp` and `iprint` options of the
+L-BFGS-B solver are deprecated and will be removed in SciPy 1.18.0
+```
+
+**Fix:**
+
+```bash
+pip install "scipy<1.18"
+```
+
+Then report it upstream — this breaks cpm for every user who upgrades SciPy, and
+the fix is a couple of lines. A template is in the announcement plan; the short
+version is that `disp` should be dropped, or passed only when
+`scipy.__version__ < 1.18`.
+
+### Note that `daftar doctor` reports cpm as `ok`
+
+Correctly: `import cpm` succeeds. **Importing is not the same as working.**
+`doctor` is a fast import check; the live adapter tests run a real fit and will
+skip with the explanation above. If you want the runtime check on its own:
+
+```bash
+pytest tests/test_adapters_live.py -rs -k at_least_report -s
+```
+
+which prints both the import status and a runtime usability line per framework.
+
+---
+
 ## Brian2: `type object 'numpy.ndarray' has no attribute 'ptp'`
 
 Brian2 is installed and imports fail. The adapter tests skip, and older daftar
@@ -332,6 +377,29 @@ Reports the daftar version, the interpreter, and every adapter as `ok`,
 NumPy, a missing shared library, a clash with another package. That is fixable
 and worth knowing about; "not installed" usually is not. Conflating the two is
 how a broken environment goes unnoticed for weeks.
+
+---
+
+## Why does this keep happening?
+
+Three of the four adapters have now hit the same shape of problem:
+
+| Framework | Dependency | What broke |
+|---|---|---|
+| jaxley 0.13.0 | JAX ≥ 0.7 | `jnp.clip(a_max=...)` removed |
+| brian2 ≤ 2.9 | NumPy ≥ 2.0 | `ndarray.ptp` removed |
+| cpm 0.25.6 | SciPy ≥ 1.18 | `fmin_l_bfgs_b(disp=...)` removed |
+
+Research packages pin loosely and their dependencies remove APIs on a schedule
+the packages do not track. This is not unusual and it is not anyone's fault; it
+is the normal condition of a scientific Python environment, and it is a large
+part of why daftar records `env.*` at all. Each of these would appear in a diff
+as an environment change with a matching result change — or, worse, as code that
+simply stops running.
+
+The test suite's rule: **skip for a clash we recognise and can explain, fail
+loudly for anything we do not.** An unrecognised error might be our bug, and a
+silent skip would hide it.
 
 ---
 

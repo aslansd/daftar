@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.2
+
+**cpm live tests now skip with an explanation instead of failing** when cpm and
+SciPy disagree. cpm 0.25.6 passes `disp=` to `fmin_l_bfgs_b`, which SciPy
+removed in 1.18.0, so cpm imports cleanly and raises the moment you fit
+anything.
+
+This is the third framework/dependency clash across four adapters — jaxley
+against JAX, brian2 against NumPy, cpm against SciPy — so the preflight logic is
+now a single `_require_working(name, probe)` helper rather than one bespoke
+function per adapter. The rule it encodes: skip for a clash we recognise and can
+explain, fail loudly for anything we do not, because an unrecognised error might
+be our bug and a silent skip would hide it.
+
+**Runtime checks are reported separately from import checks.** `daftar doctor`
+answers "does it import", which is fast and usually enough. It is not the same
+question as "does it work": cpm reports `ok` under SciPy 1.18 and then fails on
+the first fit. The adapter status test now prints both.
+
 ## 0.3.1
 
 **A framework that is installed but broken is no longer reported as absent.**
