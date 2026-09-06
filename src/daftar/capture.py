@@ -27,7 +27,7 @@ from typing import Any
 # guarantees the usual suspects appear even if imported lazily later.
 _ALWAYS_RECORD = (
     "numpy", "scipy", "pandas", "jax", "jaxlib", "jaxley", "torch",
-    "equinox", "brian2", "neuron", "cpm-toolbox", "cpm", "dm-meltingpot",
+    "equinox", "brian2", "neuron", "cpm-toolbox", "cpm", "cython", "sympy", "dm-meltingpot",
     "dmlab2d", "gdm-concordia", "matplotlib", "scikit-learn",
 )
 
@@ -291,6 +291,18 @@ def apply_seeds(seed: int) -> dict[str, Any]:
     jax = sys.modules.get("jax")
     if jax is not None:
         applied["jax_root_key"] = f"jax.random.PRNGKey({seed})"
+
+    # Brian2 keeps its own RNG on the current device. Seeding numpy does not
+    # reach it, so a Brian2 network seeded only through numpy still draws a
+    # different random connectivity on every run -- exactly the failure this
+    # function exists to prevent.
+    brian2 = sys.modules.get("brian2")
+    if brian2 is not None:
+        try:
+            brian2.seed(seed)
+            applied["brian2"] = True
+        except Exception:  # pragma: no cover - defensive
+            applied["brian2"] = False
 
     return applied
 
