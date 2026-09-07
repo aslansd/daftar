@@ -570,3 +570,187 @@ def test_brian2_dt_change_is_a_cause_not_a_mystery(store):
     causes = [c.key for c in d.causes]
     assert "param.brian2.defaultclock_dt" in causes
     assert d.effects, "changing dt should move the spike count"
+
+
+# ==========================================================================
+# MNE-Python
+# ==========================================================================
+
+def _mne_raw(n_channels=6, sfreq=250.0, seconds=12, seed=0):
+    """A small synthetic EEG recording with one channel marked bad."""
+    import numpy as np
+    import mne
+
+    mne.set_log_level("ERROR")
+    names = [f"EEG{i:03d}" for i in range(n_channels)]
+    info = mne.create_info(names, sfreq, "eeg")
+    rng = np.random.default_rng(seed)
+    data = rng.normal(scale=2e-5, size=(n_channels, int(sfreq * seconds)))
+    raw = mne.io.RawArray(data, info)
+    raw.info["bads"] = [names[2]]
+    return raw
+
+
+@_require("mne")
+def test_mne_records_recording_state_without_subject_data(store):
+    """Structure is recorded; subject identifiers are not."""
+    import mne
+
+    from daftar.adapters import mne as mnea
+
+    raw = _mne_raw()
+    raw.info["subject_info"] = {"his_id": "PATIENT-12345", "sex": 1}
+    raw.info["line_freq"] = 50.0
+
+    with daftar.track("preproc", seed=42, store=store) as run:
+        mnea.describe_environment(run)
+        mnea.describe_raw(raw, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    assert m.get("param.recording.sfreq") == "250.0"
+    assert m.get("param.recording.nchan") == "6"
+    assert m.get("param.recording.n_eeg") == "6"
+    assert m.get("param.recording.line_freq") == "50.0"
+
+    # Bad channels are a human judgement that changes everything downstream.
+    assert "EEG002" in m.get("param.recording.bads")
+    assert m.get("param.recording.n_bads") == "1"
+
+    # Subject data is hashed, never stored. Manifests get committed.
+    assert m.get("param.recording.subject_info_sha256")
+    assert "PATIENT-12345" not in m.to_json()
+    assert m.get("param.recording.meas_date_set") in ("true", "false")
+    assert mne.__version__ == m.get("param.mne.version")
+
+
+@_require("mne")
+def test_mne_filter_records_the_design_not_just_the_band(store):
+    """info['highpass']/['lowpass'] survive raw.filter(); the design does not.
+
+    A zero-phase FIR with a wide transition band and a causal IIR are different
+    filters. "1-40 Hz" in a methods section does not distinguish them.
+    """
+    from daftar.adapters import mne as mnea
+
+    raw = _mne_raw()
+    with daftar.track("filt", seed=42, store=store) as run:
+        mnea.filter_raw(raw, run, l_freq=1.0, h_freq=40.0, fir_design="firwin")
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.filter.l_freq") == "1.0"
+    assert m.get("param.filter.h_freq") == "40.0"
+    assert m.get("param.filter.fir_design") == "firwin"
+    # Defaults the caller never passed are recorded and flagged as defaults, so
+    # a future change of MNE default shows up as a diff.
+    assert m.get("param.filter.phase") == "zero"
+    assert m.get("param.filter.phase.was_default") == "true"
+    assert m.get("param.filter.fir_design.was_default") is None
+    # The resulting band is refreshed from Info afterwards.
+    assert m.get("param.recording.highpass") == "1.0"
+
+
+@_require("mne")
+def test_mne_epochs_record_what_was_thrown_away(store):
+    """An average over 40 surviving epochs differs from one over 180."""
+    import numpy as np
+    import mne
+
+    from daftar.adapters import mne as mnea
+
+    raw = _mne_raw(seconds=12)
+    events = np.array([[int(250 * t), 0, 1] for t in range(1, 11)])
+
+    with daftar.track("epoch", seed=42, store=store) as run:
+        epochs = mne.Epochs(raw, events, event_id={"stim": 1},
+                            tmin=-0.2, tmax=0.5, baseline=(None, 0),
+                            reject=dict(eeg=1e-6),   # aggressive: drops most
+                            preload=True)
+        mnea.describe_epochs(epochs, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.epochs.tmin") == "-0.2"
+    assert m.get("param.epochs.tmax") == "0.5"
+    assert "eeg" in m.get("param.epochs.reject")
+    assert m.get("param.epochs.n_conditions") == "1"
+
+    total = int(m.get("result.epochs.n_epochs_total"))
+    dropped = int(m.get("result.epochs.n_epochs_dropped"))
+    assert total == 10
+    assert dropped > 0, "the aggressive reject threshold should drop epochs"
+    assert m.get("result.epochs.drop_rate")
+    # Why they were dropped, not just how many.
+    assert m.get("result.epochs.drop_reasons")
+
+
+@_require("mne")
+def test_mne_ica_records_exclusions_and_convergence(store):
+    """ica.exclude is the most consequential unrecorded decision in EEG."""
+    import mne
+
+    from daftar.adapters import mne as mnea
+
+    raw = _mne_raw(n_channels=6)
+    ica = mne.preprocessing.ICA(n_components=4, method="fastica",
+                                random_state=97, max_iter=200)
+    ica.fit(raw)
+    ica.exclude = [0, 2]
+
+    with daftar.track("ica", seed=42, store=store) as run:
+        mnea.apply_ica(ica, raw.copy(), run)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    assert m.get("param.ica.method") == "fastica"
+    assert m.get("param.ica.random_state") == "97"
+    assert m.get("param.ica.n_components_fitted") == "4"
+
+    # The human decision.
+    assert m.get("param.ica.exclude") == "[0, 2]"
+    assert m.get("param.ica.n_excluded") == "2"
+
+    # n_iter_ == max_iter means it stopped, not that it finished.
+    assert m.get("result.ica.n_iter")
+    assert m.get("result.ica.converged") in ("true", "false")
+
+
+@_require("mne")
+def test_mne_unseeded_ica_is_flagged_as_irreproducible(store):
+    """random_state=None means the components -- and the exclusions indexing
+    into them -- differ between runs. The manifest must say so loudly."""
+    import mne
+
+    from daftar.adapters import mne as mnea
+
+    ica = mne.preprocessing.ICA(n_components=3, method="fastica",
+                                random_state=None, max_iter=100)
+    ica.fit(_mne_raw(n_channels=5))
+
+    with daftar.track("ica-unseeded", store=store) as run:
+        mnea.describe_ica(ica, run)
+        rid = run.run_id
+
+    assert "NOT REPRODUCIBLE" in store.load(rid).get("param.ica.random_state")
+
+
+@_require("mne")
+def test_mne_bad_channel_change_is_a_cause(store):
+    """Marking one more channel bad changes every downstream number."""
+    from daftar.adapters import mne as mnea
+
+    ids = []
+    for bads in (["EEG002"], ["EEG002", "EEG004"]):
+        raw = _mne_raw()
+        raw.info["bads"] = bads
+        with daftar.track("preproc", seed=42, store=store) as run:
+            mnea.describe_raw(raw, run)
+            ids.append(run.run_id)
+
+    causes = [c.key for c in
+              daftar.diff_manifests(store.load(ids[0]), store.load(ids[1])).causes]
+    assert "param.recording.bads" in causes
+    assert "param.recording.n_bads" in causes
