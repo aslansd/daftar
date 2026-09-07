@@ -7,7 +7,9 @@ at module load.
 
 from __future__ import annotations
 
-from . import brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter
+from . import (
+    brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter, mne_adapter,
+)
 from .base import (
     AVAILABLE, BROKEN, MISSING, Adapter, AdapterRegistry, probe_import,
     record_optional, safe,
@@ -18,11 +20,13 @@ registry.register("jaxley", jaxley_adapter)
 registry.register("cpm", cpm_adapter)
 registry.register("meltingpot", meltingpot_adapter)
 registry.register("brian2", brian2_adapter)
+registry.register("mne", mne_adapter)
 
 jaxley = jaxley_adapter
 cpm = cpm_adapter
 meltingpot = meltingpot_adapter
 brian2 = brian2_adapter
+mne = mne_adapter
 
 
 def available() -> list[str]:
@@ -54,8 +58,9 @@ def get(name: str):
 
 __all__ = [
     "registry", "available", "get",
-    "jaxley", "cpm", "meltingpot", "brian2",
+    "jaxley", "cpm", "meltingpot", "brian2", "mne",
     "jaxley_adapter", "cpm_adapter", "meltingpot_adapter", "brian2_adapter",
+    "mne_adapter",
     "Adapter", "AdapterRegistry", "safe", "record_optional",
     "status", "probe_import", "AVAILABLE", "MISSING", "BROKEN",
 ]
