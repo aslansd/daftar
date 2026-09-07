@@ -108,6 +108,32 @@ model code never mentions it.
 
 ---
 
+## MNE: `The sklearn package is required to use method='fastica'`
+
+`import mne` succeeds; `ica.fit()` raises. scikit-learn is an **optional** MNE
+dependency and MNE's default ICA method delegates to it.
+
+```bash
+pip install scikit-learn
+```
+
+Or use MNE's native implementation, which needs nothing extra:
+
+```python
+mne.preprocessing.ICA(n_components=20, method="infomax", random_state=97)
+```
+
+`daftar doctor` reports mne as `ok` here, correctly — the package imports. This
+is the same distinction as cpm under SciPy 1.18: **importing is not the same as
+working**, and an optional dependency is exactly the gap between them. The live
+tests pick whichever ICA method is available rather than skipping, since what
+they exercise — recording exclusions, convergence and `random_state` — does not
+depend on which algorithm ran.
+
+`pip install "daftar[mne]"` installs scikit-learn alongside mne for this reason.
+
+---
+
 ## Brian2: `type object 'numpy.ndarray' has no attribute 'ptp'`
 
 **Resolved by upgrading.** A three-way version trap:

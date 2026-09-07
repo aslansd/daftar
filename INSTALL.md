@@ -34,6 +34,7 @@ frameworks do not track. As of this writing:
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
 | mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
+| mne ICA | **needs `scikit-learn`** | an *optional* MNE dependency: `import mne` succeeds and `ica.fit()` raises `ImportError` |
 
 This is not anyone's fault and it is not unusual. It is the normal condition of
 a scientific Python environment, and it is a large part of why daftar records
@@ -50,6 +51,7 @@ conda activate daftar312
 
 pip install daftar
 pip install brian2 jaxley cpm-toolbox mne
+pip install scikit-learn        # MNE's default ICA (fastica) delegates to it
 pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6; mne is fine with it
 pip install pytest ipython      # for the test suite and notebook support
 
@@ -106,7 +108,7 @@ The extras exist for convenience, but read the constraints above before using
 pip install "daftar[jaxley]"
 pip install "daftar[cpm]"
 pip install "daftar[brian2]"
-pip install "daftar[mne]"
+pip install "daftar[mne]"        # pulls scikit-learn too, for ICA
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython

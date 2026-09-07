@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.1
+
+**MNE ICA tests no longer assume scikit-learn is installed.** MNE's default ICA
+method, `fastica`, delegates to scikit-learn — an *optional* MNE dependency. So
+`import mne` succeeds, `daftar doctor` reports `ok`, and `ica.fit()` raises
+`ImportError`. The 0.4.0 tests assumed it was present and failed where it was
+not.
+
+The tests now select whichever method works: `fastica` when scikit-learn is
+available, MNE's native `infomax` otherwise. Choosing rather than skipping is
+deliberate — what these tests exercise is the adapter's recording of exclusions,
+convergence and `random_state`, none of which depends on the algorithm. Skipping
+would have lost real coverage over an incidental dependency. Verified passing
+both with scikit-learn and with it blocked.
+
+**`daftar[mne]` now installs scikit-learn**, since ICA is the adapter's headline
+feature and having it fail on first use is a poor introduction.
+
+The adapter itself is unchanged. This is the same distinction that came up with
+cpm under SciPy 1.18: **importing is not the same as working**, and an optional
+dependency is exactly the gap between the two.
+
 ## 0.4.0 — MNE-Python
 
 MNE preprocessing is largely a sequence of **human decisions that are never
