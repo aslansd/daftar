@@ -23,7 +23,7 @@ daftar doctor
 Here the honest answer is more complicated than a single command, and it is
 worth understanding why before you start.
 
-**The four target frameworks cannot currently share one environment.** Each pins
+**The five target frameworks cannot currently share one environment.** Each pins
 its dependencies loosely, and their dependencies remove APIs on schedules the
 frameworks do not track. As of this writing:
 
@@ -33,6 +33,7 @@ frameworks do not track. As of this writing:
 | cpm-toolbox 0.25.6 | needs **scipy < 1.18** | passes `disp=` to `fmin_l_bfgs_b`, removed in SciPy 1.18.0 |
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
+| mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
 
 This is not anyone's fault and it is not unusual. It is the normal condition of
 a scientific Python environment, and it is a large part of why daftar records
@@ -41,15 +42,15 @@ a scientific Python environment, and it is a large part of why daftar records
 **Do not try to force all four into one environment.** Use two, and let the test
 suite skip whatever is absent in each — both suites go green.
 
-### Environment A — brian2, jaxley, cpm (Python 3.12)
+### Environment A — brian2, jaxley, cpm, mne (Python 3.12)
 
 ```bash
 conda create --name daftar312 python=3.12
 conda activate daftar312
 
 pip install daftar
-pip install brian2 jaxley cpm-toolbox
-pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6
+pip install brian2 jaxley cpm-toolbox mne
+pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6; mne is fine with it
 pip install pytest ipython      # for the test suite and notebook support
 
 daftar doctor
@@ -65,6 +66,7 @@ python 3.12.14 on Darwin arm64
   cpm         ok
   jaxley      ok
   meltingpot  -       not installed
+  mne         ok
 ```
 
 ### Environment B — meltingpot (Python 3.11)
@@ -104,6 +106,7 @@ The extras exist for convenience, but read the constraints above before using
 pip install "daftar[jaxley]"
 pip install "daftar[cpm]"
 pip install "daftar[brian2]"
+pip install "daftar[mne]"
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython

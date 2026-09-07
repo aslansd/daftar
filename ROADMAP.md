@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Four adapters, all verified against live installed frameworks. Notebook and
-Colab support. 0.3.3 on PyPI, zero runtime dependencies, Apache 2.0.
+Five adapters, all verified against live installed frameworks. Notebook and
+Colab support. 0.4.0 on PyPI, zero runtime dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -12,13 +12,14 @@ Colab support. 0.3.3 on PyPI, zero runtime dependencies, Apache 2.0.
 | cpm adapter | verified live |
 | MeltingPot adapter | verified live |
 | Brian2 adapter | verified live |
+| MNE-Python adapter | verified live |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
 tests/test_core.py            44 passed
 tests/test_notebook.py        15 passed
-tests/test_adapters_live.py   11 (skip whatever is absent)
+tests/test_adapters_live.py   17 (skip whatever is absent)
 ```
 
 The initial version is done. Everything below is about what comes next, and the
@@ -33,7 +34,7 @@ what it does not say: number of adapters. Adapter count is a vanity metric — i
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Four adapters with zero users and eight adapters with zero users are the same
+Five adapters with zero users and ten adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
@@ -82,7 +83,7 @@ An adapter is worth writing only if all five hold:
    eLife, SNUFA, Neuromatch and Mathematics of Neuroscience. An adapter you
    cannot distribute is a hobby.
 4. **The framework is stable enough not to rot.** Every adapter is a maintenance
-   liability against someone else's release schedule — and three of the four
+   liability against someone else's release schedule — and three of the five
    existing ones have already broken against a dependency.
 5. **It stays inside the envelope.** Unregulated, non-dual-use, Python, runs on
    a laptop.
@@ -115,18 +116,12 @@ Harder than Brian2 — hoc, C++, and a much older API surface.
 
 ### Tier 2
 
-**3. MNE-Python** — EEG/MEG analysis.
+**3. FieldTrip / EEGLAB interop** — reading what other toolboxes produced.
 
-Much larger user base than Jaxley, cpm and Brian2 combined, and preprocessing is
-a notorious provenance disaster: filter settings, montage, re-referencing, and
-above all **manually rejected ICA components**, a human decision that usually
-exists only in someone's memory.
-
-The original feasibility plan deferred fMRI/EEG because human neuroimaging is
-health data. That objection largely dissolves under the current architecture:
-daftar is local, offline, and never transmits data, so an adapter records
-provenance about an analysis without touching a subject's recordings. The
-regulatory risk lived in hosting, and there is no hosting.
+Much of the EEG world is still MATLAB. daftar cannot instrument EEGLAB, but it
+can record the provenance of data *imported* from it: which `.set` file, which
+preprocessing was already applied before Python saw it. Lower value than a
+native adapter and much cheaper to build.
 
 ### Tier 3
 

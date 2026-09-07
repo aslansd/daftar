@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.4.0 — MNE-Python
+
+MNE preprocessing is largely a sequence of **human decisions that are never
+written down**. Which channels you marked bad, which ICA components you excluded
+after looking at topographies, which epochs were dropped and why: each changes
+every downstream number, and each typically survives only in the analyst's
+memory.
+
+**`ica.exclude` is the headline.** It is the most consequential unrecorded
+decision in EEG/MEG analysis. A reviewer asking "which components did you
+remove?" is usually asking a question with no surviving answer six months later.
+The adapter records the exclusion list, the count, and the decomposition it
+indexes into.
+
+**Whether ICA converged.** `n_iter_ == max_iter` means FastICA hit the iteration
+limit and stopped, not that it finished. MNE warns at fit time and stores
+nothing you would notice afterwards. Recorded as `result.ica.converged`.
+
+**`random_state=None` is flagged loudly.** ICA without a seed is not
+reproducible, and neither are the component indices the exclusions refer to.
+The manifest records `none (NOT REPRODUCIBLE)` rather than a bare `None`.
+
+**Filter design, not just the band.** `raw.filter()` updates `info["highpass"]`
+and `info["lowpass"]` and then discards `fir_design`, `phase`, `window` and the
+transition bandwidths. A zero-phase FIR with a wide transition band and a causal
+IIR are different filters, and "1–40 Hz" in a methods section does not
+distinguish them. `filter_raw()` records the design and flags which values were
+MNE defaults you never passed.
+
+**`epochs.drop_log`.** How many epochs were rejected and for what reason. An
+evoked average over 40 surviving epochs is a different quantity from one over
+180, and the average alone does not say which you have.
+
+### On subject data
+
+This adapter runs against human neuroimaging recordings, so it records structure
+and never content. `subject_info` and file paths are **hashed, not stored**, and
+`meas_date` is recorded only as present or absent, because dates of service are
+themselves identifiers. Manifests get committed to public repositories; nothing
+the adapter writes should make that a mistake.
+
+This is also why an MNE adapter is possible at all. The original feasibility
+plan deferred fMRI/EEG because human neuroimaging is health data — but that risk
+lived in *hosting* it. daftar is local, offline, and never transmits anything, so
+an adapter can record provenance about an analysis without touching a subject's
+recordings.
+
+Six live tests against real MNE objects. MNE requires only `scipy>=1.13`, so it
+shares an environment with cpm's `scipy<1.18` pin.
+
 ## 0.3.3 — documentation and cleanup
 
 No behaviour changes. The four adapters, notebook support and the CLI are all
