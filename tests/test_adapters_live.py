@@ -779,3 +779,178 @@ def test_mne_bad_channel_change_is_a_cause(store):
               daftar.diff_manifests(store.load(ids[0]), store.load(ids[1])).causes]
     assert "param.recording.bads" in causes
     assert "param.recording.n_bads" in causes
+
+
+# ==========================================================================
+# sbi
+# ==========================================================================
+
+def _sbi_setup(n_sims=200, dim=2, seed=0):
+    """A tiny amortised inference problem: linear Gaussian simulator."""
+    import torch
+    from sbi.utils import BoxUniform
+
+    torch.manual_seed(seed)
+    prior = BoxUniform(low=-2 * torch.ones(dim), high=2 * torch.ones(dim))
+
+    def simulator(theta):
+        return theta + 0.1 * torch.randn_like(theta)
+
+    theta = prior.sample((n_sims,))
+    return prior, theta, simulator(theta)
+
+
+@_require("sbi")
+def test_sbi_records_training_hyperparameters_sbi_discards(store):
+    """train() configures the fit and is then thrown away by sbi."""
+    from sbi.inference import NPE
+
+    from daftar.adapters import sbi as sbia
+
+    prior, theta, x = _sbi_setup()
+    inference = NPE(prior=prior, density_estimator="maf", show_progress_bars=False)
+
+    with daftar.track("npe", seed=42, store=store) as run:
+        sbia.append_simulations(inference, theta, x, run)
+        sbia.train(inference, run, training_batch_size=50, max_num_epochs=5,
+                   learning_rate=1e-3)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    # None of these survive on the trainer after the call.
+    assert m.get("param.training.training_batch_size") == "50"
+    assert m.get("param.training.learning_rate") == "0.001"
+    assert m.get("param.training.max_num_epochs") == "5"
+    # Defaults never passed are recorded and flagged, so an sbi default change
+    # shows up as a diff rather than silently moving the result.
+    assert m.get("param.training.stop_after_epochs") == "20"
+    assert m.get("param.training.stop_after_epochs.was_default") == "true"
+    assert m.get("param.training.learning_rate.was_default") is None
+
+    # sbi's `NPE` is an alias; the concrete class is NPE_C. Recording what
+    # actually ran is the point -- an alias can be repointed at a different
+    # algorithm in a later release without the calling code changing.
+    assert m.get("param.sbi.method") == "NPE_C"
+    assert m.get("param.sbi.num_simulations_total") == "200"
+
+
+@_require("sbi")
+def test_sbi_flags_training_that_hit_the_epoch_limit(store):
+    """Stopping on plateau and stopping on max_num_epochs are different outcomes.
+
+    sbi raises a UserWarning for the second and stores nothing you would notice,
+    so a posterior from a truncated fit looks like any other.
+    """
+    from sbi.inference import NPE
+
+    from daftar.adapters import sbi as sbia
+
+    prior, theta, x = _sbi_setup()
+    inference = NPE(prior=prior, show_progress_bars=False)
+
+    with daftar.track("npe-truncated", seed=42, store=store) as run:
+        sbia.append_simulations(inference, theta, x, run)
+        sbia.train(inference, run, training_batch_size=50, max_num_epochs=3,
+                   stop_after_epochs=1000)   # guarantees the limit is what stops it
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("result.training.converged") == "false"
+    assert int(m.get("result.training.epochs_trained_last")) >= 3
+    assert m.get("result.training.best_validation_loss_last")
+
+
+@_require("sbi")
+def test_sbi_records_the_resolved_architecture_not_the_string(store):
+    """density_estimator="maf" becomes a flow whose depth and width are defaults."""
+    from sbi.inference import NPE
+
+    from daftar.adapters import sbi as sbia
+
+    prior, theta, x = _sbi_setup()
+    inference = NPE(prior=prior, density_estimator="maf", show_progress_bars=False)
+
+    with daftar.track("npe-arch", seed=42, store=store) as run:
+        sbia.append_simulations(inference, theta, x, run)
+        sbia.train(inference, run, training_batch_size=50, max_num_epochs=3)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.estimator.class")
+    assert int(m.get("param.estimator.n_parameters")) > 0
+    assert m.get("param.estimator.input_shape") == "[2]"
+    assert m.get("param.estimator.condition_shape") == "[2]"
+
+    # The prior is an experimental parameter, not scaffolding.
+    assert m.get("param.prior.type") == "BoxUniform"
+    assert m.get("param.prior.n_dims") == "2"
+    assert "-2.0" in m.get("param.prior.low")
+
+
+@_require("sbi")
+def test_sbi_records_the_proposal_per_round(store):
+    """In sequential methods the proposal is the algorithm.
+
+    Round 1 draws from the prior, later rounds from the current posterior. sbi
+    records how many rounds happened but not what each drew from, so an
+    amortised run and a sequential run of the same budget look alike.
+    """
+    from sbi.inference import NPE
+
+    from daftar.adapters import sbi as sbia
+
+    prior, theta, x = _sbi_setup(n_sims=150)
+    inference = NPE(prior=prior, show_progress_bars=False)
+
+    with daftar.track("snpe", seed=42, store=store) as run:
+        sbia.append_simulations(inference, theta, x, run)
+        estimator = sbia.train(inference, run, training_batch_size=50,
+                               max_num_epochs=3)
+        posterior = inference.build_posterior(estimator)
+
+        import torch
+        x_o = torch.zeros(1, 2)
+        posterior.set_default_x(x_o)
+        theta2 = posterior.sample((100,), show_progress_bars=False)
+        x2 = theta2 + 0.1 * torch.randn_like(theta2)
+        sbia.append_simulations(inference, theta2, x2, run, proposal=posterior)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.sbi.round_0.proposal") == "prior"
+    assert m.get("param.sbi.round_1.proposal") == "DirectPosterior"
+    assert m.get("param.sbi.round_0.n_simulations") == "150"
+    assert m.get("param.sbi.round_1.n_simulations") == "100"
+    # Content hashes, so a changed simulation batch is detectable.
+    assert len(m.get("param.sbi.round_0.theta_sha256")) == 16
+
+
+@_require("sbi")
+def test_sbi_posterior_records_the_observation_by_hash(store):
+    """x_o is hashed, not stored: it can be large and is often measured data."""
+    import torch
+    from sbi.inference import NPE
+
+    from daftar.adapters import sbi as sbia
+
+    prior, theta, x = _sbi_setup()
+    inference = NPE(prior=prior, show_progress_bars=False)
+
+    ids = []
+    for x_o in (torch.zeros(1, 2), torch.ones(1, 2)):
+        inf = NPE(prior=prior, show_progress_bars=False)
+        with daftar.track("npe-post", seed=42, store=store) as run:
+            sbia.append_simulations(inf, theta, x, run)
+            est = sbia.train(inf, run, training_batch_size=50, max_num_epochs=3)
+            posterior = inf.build_posterior(est)
+            sbia.sample_posterior(posterior, (50,), run, x=x_o,
+                                  show_progress_bars=False)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    assert len(a.get("param.posterior.x_o_sha256")) == 16
+    # A different observation is a cause of a different posterior.
+    causes = [c.key for c in daftar.diff_manifests(a, b).causes]
+    assert "param.posterior.x_o_sha256" in causes
+    assert a.get("result.posterior.mean")
