@@ -431,6 +431,12 @@ def test_at_least_report_what_is_installed():
         except Exception:
             pass
 
+    if daftar.adapters.get("mne").is_available():
+        from daftar.adapters.base import AVAILABLE, probe_import
+        has_sklearn = probe_import("sklearn")[0] == AVAILABLE
+        print(f"\nmne optional deps: scikit-learn "
+              f"{'present (ICA method=fastica)' if has_sklearn else 'MISSING (ICA falls back to infomax)'}")
+
     print("\nruntime checks (importing is not the same as working):")
     for name, probe in (("jaxley", _jaxley_is_usable), ("cpm", _cpm_is_usable)):
         if not daftar.adapters.get(name).is_available():
@@ -576,6 +582,24 @@ def test_brian2_dt_change_is_a_cause_not_a_mystery(store):
 # MNE-Python
 # ==========================================================================
 
+def _mne_ica_method() -> str:
+    """An ICA method that works in this environment.
+
+    MNE's default, `fastica`, delegates to scikit-learn, which is an *optional*
+    MNE dependency -- so `import mne` succeeds and `ica.fit()` raises
+    ImportError. `infomax` is implemented natively in MNE and needs nothing
+    extra.
+
+    Choosing rather than skipping is deliberate: what these tests exercise is
+    the adapter's recording of exclusions, convergence and random_state, and
+    none of that depends on which algorithm ran. Skipping would lose real
+    coverage over an incidental dependency.
+    """
+    from daftar.adapters.base import AVAILABLE, probe_import
+
+    return "fastica" if probe_import("sklearn")[0] == AVAILABLE else "infomax"
+
+
 def _mne_raw(n_channels=6, sfreq=250.0, seconds=12, seed=0):
     """A small synthetic EEG recording with one channel marked bad."""
     import numpy as np
@@ -694,7 +718,8 @@ def test_mne_ica_records_exclusions_and_convergence(store):
     from daftar.adapters import mne as mnea
 
     raw = _mne_raw(n_channels=6)
-    ica = mne.preprocessing.ICA(n_components=4, method="fastica",
+    method = _mne_ica_method()
+    ica = mne.preprocessing.ICA(n_components=4, method=method,
                                 random_state=97, max_iter=200)
     ica.fit(raw)
     ica.exclude = [0, 2]
@@ -705,7 +730,7 @@ def test_mne_ica_records_exclusions_and_convergence(store):
 
     m = store.load(rid)
 
-    assert m.get("param.ica.method") == "fastica"
+    assert m.get("param.ica.method") == method
     assert m.get("param.ica.random_state") == "97"
     assert m.get("param.ica.n_components_fitted") == "4"
 
@@ -726,7 +751,7 @@ def test_mne_unseeded_ica_is_flagged_as_irreproducible(store):
 
     from daftar.adapters import mne as mnea
 
-    ica = mne.preprocessing.ICA(n_components=3, method="fastica",
+    ica = mne.preprocessing.ICA(n_components=3, method=_mne_ica_method(),
                                 random_state=None, max_iter=100)
     ica.fit(_mne_raw(n_channels=5))
 
