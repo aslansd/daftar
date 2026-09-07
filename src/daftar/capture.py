@@ -27,7 +27,8 @@ from typing import Any
 # guarantees the usual suspects appear even if imported lazily later.
 _ALWAYS_RECORD = (
     "numpy", "scipy", "pandas", "jax", "jaxlib", "jaxley", "torch",
-    "equinox", "brian2", "neuron", "cpm-toolbox", "cpm", "cython", "sympy", "dm-meltingpot",
+    "equinox", "brian2", "neuron", "cpm-toolbox", "cpm", "cython", "sympy",
+    "mne", "scikit-learn", "sklearn", "dm-meltingpot",
     "dmlab2d", "gdm-concordia", "matplotlib", "scikit-learn",
 )
 
