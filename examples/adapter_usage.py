@@ -142,6 +142,47 @@ with daftar.track("preproc", seed=42) as run:
 # identifiers, and manifests get committed to public repositories.
 '''
 
+# ------------------------------------------------------------------- sbi ---
+SBI = '''
+import torch
+from sbi.inference import NPE
+from sbi.utils import BoxUniform
+import daftar
+from daftar.adapters import sbi as sbia
+
+prior = BoxUniform(low=-2*torch.ones(2), high=2*torch.ones(2))
+theta = prior.sample((1000,)); x = simulator(theta)
+
+with daftar.track("npe", seed=42) as run:
+    inference = NPE(prior=prior, density_estimator="maf")
+    sbia.append_simulations(inference, theta, x, run)
+    estimator = sbia.train(inference, run, training_batch_size=200,
+                           learning_rate=5e-4, max_num_epochs=500)
+    posterior = inference.build_posterior(estimator)
+    samples = sbia.sample_posterior(posterior, (10_000,), run, x=x_o)
+
+# Recorded automatically:
+#   training.learning_rate, .training_batch_size, .stop_after_epochs, ...
+#   training.stop_after_epochs.was_default = true
+#   result.training.converged        <- False means it hit max_num_epochs
+#   result.training.best_validation_loss
+#   estimator.class, .n_parameters, .input_shape, .embedding_net
+#   sbi.round_0.proposal = prior     sbi.round_1.proposal = DirectPosterior
+#   sbi.num_simulations_per_round, .num_simulations_total
+#   prior.type, .n_dims, .low, .high
+#   posterior.x_o_sha256             <- hashed, not stored
+#   result.posterior.mean / .std
+#
+# sbi keeps none of the train() arguments after the call, so two posteriors
+# trained at different learning rates are otherwise indistinguishable. And
+# `converged` matters: stopping because validation loss plateaued and stopping
+# because you ran out of epochs are different outcomes, and sbi only warns.
+#
+# In sequential methods the proposal IS the algorithm -- round 1 draws from the
+# prior, later rounds from the posterior. sbi records how many rounds happened
+# but not what each drew from.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -199,7 +240,7 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI),
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
