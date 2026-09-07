@@ -99,6 +99,49 @@ with daftar.track("balanced-net", seed=42) as run:
 # different graph every run.
 '''
 
+# ------------------------------------------------------------------- MNE ---
+MNE = '''
+import mne
+import daftar
+from daftar.adapters import mne as mnea
+
+raw = mne.io.read_raw_fif("sub-01_raw.fif", preload=True)
+raw.info["bads"] = ["EEG 053"]
+
+with daftar.track("preproc", seed=42) as run:
+    mnea.describe_environment(run)
+    mnea.filter_raw(raw, run, l_freq=1.0, h_freq=40.0)
+
+    ica = mne.preprocessing.ICA(n_components=20, random_state=97)
+    ica.fit(raw)
+    ica.exclude = [0, 3]              # <- the decision nothing else records
+    mnea.apply_ica(ica, raw, run)
+
+    epochs = mne.Epochs(raw, events, tmin=-0.2, tmax=0.5,
+                        reject=dict(eeg=150e-6), preload=True)
+    mnea.describe_epochs(epochs, run)
+    mnea.describe_evoked(epochs.average(), run)
+
+# Recorded automatically:
+#   ica.exclude = [0, 3]            <- the human decision, otherwise unrecorded
+#   ica.n_excluded = 2
+#   ica.random_state = 97           <- None would read "none (NOT REPRODUCIBLE)"
+#   result.ica.converged            <- n_iter_ == max_iter means it stopped, not finished
+#   filter.phase = zero             filter.phase.was_default = true
+#   filter.fir_design, .l_trans_bandwidth, .h_trans_bandwidth
+#   recording.bads, .n_bads         <- another human judgement
+#   result.epochs.n_epochs_dropped, .drop_rate, .drop_reasons
+#
+# ica.exclude is the point. A reviewer asking "which components did you remove?"
+# is usually asking a question with no surviving answer. raw.filter() is the
+# same shape of problem: info["highpass"]/["lowpass"] survive, the design that
+# produced them does not.
+#
+# On privacy: subject_info and file paths are hashed, never stored, and
+# meas_date is recorded only as present/absent. Dates of service are
+# identifiers, and manifests get committed to public repositories.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -156,7 +199,7 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE),
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
