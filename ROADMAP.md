@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Five adapters, all verified against live installed frameworks. Notebook and
-Colab support. 0.4.0 on PyPI, zero runtime dependencies, Apache 2.0.
+Six adapters, all verified against live installed frameworks. Notebook and
+Colab support. 0.5.0 on PyPI, zero runtime dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -13,13 +13,14 @@ Colab support. 0.4.0 on PyPI, zero runtime dependencies, Apache 2.0.
 | MeltingPot adapter | verified live |
 | Brian2 adapter | verified live |
 | MNE-Python adapter | verified live |
+| sbi adapter | verified live |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
 tests/test_core.py            44 passed
 tests/test_notebook.py        15 passed
-tests/test_adapters_live.py   17 (skip whatever is absent)
+tests/test_adapters_live.py   22 (skip whatever is absent)
 ```
 
 The initial version is done. Everything below is about what comes next, and the
@@ -34,7 +35,7 @@ what it does not say: number of adapters. Adapter count is a vanity metric — i
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Five adapters with zero users and ten adapters with zero users are the same
+Six adapters with zero users and twelve adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
@@ -83,7 +84,7 @@ An adapter is worth writing only if all five hold:
    eLife, SNUFA, Neuromatch and Mathematics of Neuroscience. An adapter you
    cannot distribute is a hobby.
 4. **The framework is stable enough not to rot.** Every adapter is a maintenance
-   liability against someone else's release schedule — and three of the five
+   liability against someone else's release schedule — and three of the six
    existing ones have already broken against a dependency.
 5. **It stays inside the envelope.** Unregulated, non-dual-use, Python, runs on
    a laptop.
@@ -94,16 +95,7 @@ An adapter is worth writing only if all five hold:
 
 ### Tier 1
 
-**1. sbi** — simulation-based inference.
-
-Note the ecosystem adjacency: **sbi and Jaxley both come from the Macke lab.**
-Same maintainers, same users, same conferences. With the Jaxley adapter shipped
-and verified, sbi is the natural neighbour and the introduction is warm rather
-than cold. The hidden state is substantial — density estimator architecture,
-`num_simulations`, number of rounds, the proposal at each round, embedding net.
-Posterior estimates move under all of it and none of it is in the call.
-
-**2. NEURON / NetPyNE** — the incumbent in biophysical modelling.
+**1. NEURON / NetPyNE** — the incumbent in biophysical modelling.
 
 The largest install base in the beachhead by a wide margin, and the worst
 provenance situation in it. Compiled `.mod` mechanism files are the prize:
@@ -116,7 +108,7 @@ Harder than Brian2 — hoc, C++, and a much older API surface.
 
 ### Tier 2
 
-**3. FieldTrip / EEGLAB interop** — reading what other toolboxes produced.
+**2. FieldTrip / EEGLAB interop** — reading what other toolboxes produced.
 
 Much of the EEG world is still MATLAB. daftar cannot instrument EEGLAB, but it
 can record the provenance of data *imported* from it: which `.set` file, which
@@ -125,7 +117,7 @@ native adapter and much cheaper to build.
 
 ### Tier 3
 
-**4. Concordia** — the strategic one, and the reason to do it last.
+**3. Concordia** — the strategic one, and the reason to do it last.
 
 Every agent step calls `LanguageModel.sample_text()`, so `replay` cannot mean
 what it means elsewhere. The right contract is different: wrap the model, hash

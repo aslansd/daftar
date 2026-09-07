@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.0 — sbi
+
+sbi has the same shape of problem as the other adapters, in a more acute form:
+**almost nothing that determines a posterior is stored on the objects
+afterwards.**
+
+**Training hyperparameters vanish.** `train(training_batch_size=200,
+learning_rate=5e-4, stop_after_epochs=20, ...)` configures the fit and is then
+discarded — nothing on the trainer records what you passed. Two posteriors
+trained at different learning rates are indistinguishable. `sbi_adapter.train()`
+records them, and flags which values were sbi defaults you never passed, so a
+future default change appears as a diff rather than silently moving results.
+
+**Whether training converged.** sbi stops either because validation loss
+plateaued or because it hit `max_num_epochs`, and those are entirely different
+outcomes. It raises a `UserWarning` for the second and stores nothing you would
+notice: `epochs_trained` is in `summary`, but the limit it was compared against
+is not. Recorded as `result.training.converged`.
+
+This is now the fourth adapter where the same pattern appears — MNE's ICA
+(`n_iter_ == max_iter`), cpm's per-participant convergence, Brian2's
+auto-selected integrator, and now sbi. Optimisers stop for two reasons and
+report one.
+
+**The proposal is the algorithm.** In multi-round SNPE/SNLE/SNRE, round 1 draws
+from the prior and later rounds from the current posterior. sbi records how many
+rounds happened but not what each drew from, so an amortised run and a
+sequential run with the same simulation budget look alike afterwards. Recorded
+per round, with content hashes of the simulations.
+
+**The density estimator is usually a string.** `density_estimator="maf"` becomes
+a flow with a depth, width and embedding net chosen by defaults that change
+between sbi releases. The adapter records the resolved class, parameter count,
+input and condition shapes, and embedding net type.
+
+Also recorded: the prior family and its support bounds, the simulation budget
+per round and in total, and `x_o` **by content hash** — observations can be
+large and are often measured data that does not belong in a committed manifest.
+
+Five live tests against real NPE inference. sbi pulls PyTorch, which is a large
+download but otherwise unconstrained; it shares Environment A.
+
 ## 0.4.1
 
 **MNE ICA tests no longer assume scikit-learn is installed.** MNE's default ICA
