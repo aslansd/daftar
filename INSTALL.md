@@ -23,7 +23,7 @@ daftar doctor
 Here the honest answer is more complicated than a single command, and it is
 worth understanding why before you start.
 
-**The eight target frameworks cannot currently share one environment.** Each pins
+**The nine target frameworks cannot currently share one environment.** Each pins
 its dependencies loosely, and their dependencies remove APIs on schedules the
 frameworks do not track. As of this writing:
 
@@ -34,6 +34,7 @@ frameworks do not track. As of this writing:
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
 | mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
+| netpyne ≥ 1.0 | needs **NEURON**, and a C compiler for `nrnivmodl` | shares Environment A; mechanisms must be compiled per machine |
 | gdsfactory ≥ 9 | **Python ≥ 3.12, < 3.15**; pulls KLayout | shares Environment A; the Python floor is strict |
 | nilearn ≥ 0.11 | `scikit-learn`, `nibabel`, Python ≥ 3.9 | unconstrained; shares Environment A |
 | sbi ≥ 0.23 | pulls **PyTorch**, Python ≥ 3.10 | large download; otherwise unconstrained and shares Environment A |
@@ -46,15 +47,15 @@ a scientific Python environment, and it is a large part of why daftar records
 **Do not try to force all four into one environment.** Use two, and let the test
 suite skip whatever is absent in each — both suites go green.
 
-### Environment A — brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory (Python 3.12)
+### Environment A — brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne (Python 3.12)
 
 ```bash
 conda create --name daftar312 python=3.12
 conda activate daftar312
 
 pip install daftar
-pip install brian2 jaxley cpm-toolbox mne sbi nilearn gdsfactory
-#   sbi pulls PyTorch (~2 GB); gdsfactory pulls KLayout
+pip install brian2 jaxley cpm-toolbox mne sbi nilearn gdsfactory netpyne neuron
+#   sbi pulls PyTorch (~2 GB); gdsfactory pulls KLayout; netpyne pulls NEURON
 pip install scikit-learn        # MNE's default ICA (fastica) delegates to it
 pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6; mne is fine with it
 pip install pytest ipython      # for the test suite and notebook support
@@ -74,6 +75,7 @@ python 3.12.14 on Darwin arm64
   meltingpot  -       not installed
   mne         ok
   gdsfactory  ok
+  netpyne     ok
   nilearn     ok
   sbi         ok
 ```
@@ -119,6 +121,7 @@ pip install "daftar[mne]"        # pulls scikit-learn too, for ICA
 pip install "daftar[sbi]"
 pip install "daftar[nilearn]"
 pip install "daftar[gdsfactory]"
+pip install "daftar[netpyne]"
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython

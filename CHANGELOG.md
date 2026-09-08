@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.8.0 — NetPyNE / NEURON
+
+The largest install base in computational neuroscience, and the worst provenance
+situation in it. This was Tier 1 item #1 on the roadmap, and it is the last one.
+
+**A stale compiled mechanism silently runs old results.** NEURON mechanisms are
+written in NMODL and compiled by `nrnivmodl` into `x86_64/libnrnmech.so`. That
+binary is what runs. Edit a `.mod` file, forget to recompile, and the simulation
+keeps using the previous mechanism without a word — one of the most common and
+most painful failures in the field. The adapter hashes the `.mod` sources *and*
+the compiled library and compares modification times:
+
+```
+candidate causes (3)
+  neuron.compiled_lib_stale  false -> true
+  neuron.mod_sources_sha256  46ac78867a1134ff -> bb8885864cd78943
+  neuron.stale_warning       (absent) -> a .mod source is NEWER than the
+                             compiled library: NEURON is running the previously
+                             compiled mechanism. Re-run nrnivmodl.
+```
+
+**NetPyNE has four RNG seeds of its own.** `cfg.seeds` holds `conn`, `stim`,
+`loc` and `cell`, feeding NEURON's Random123 streams for connectivity,
+stimulation, cell positions and cell parameters. Seeding numpy does not touch
+them and they default to `1`, so a network can appear reproducible while the
+reproducibility is accidental. Unlike Brian2's global `seed()` these live on a
+config object rather than a module, so daftar's core cannot reach them —
+`run_sim()` sets them from the run's seed and records that it did.
+
+**`hParams.celsius` defaults to 6.3 °C**, a value inherited from the original
+squid axon work, and it changes every rate constant in every
+temperature-dependent mechanism. Most models that should set it do not.
+
+Also recorded: per-section hashes of `netParams` so a diff says *which* part of
+the model changed, the realised connection count (`probability=0.2` draws a new
+graph each time and the count is nowhere in the parameters), `nhosts` since
+results can differ under different parallel decompositions, NEURON's build hash
+which the package version does not carry, and spike-train summaries.
+
+Four live tests against real NetPyNE simulations, including the stale-mechanism
+catch and connectivity reproducing under a fixed seed.
+
+**Tier 1 of the roadmap is now empty.** Every adapter that scored well against
+the five selection criteria has been built. The constraint from here is not
+which framework to support next; it is whether anyone is using the nine that
+exist.
+
 ## 0.7.0 — gdsfactory
 
 Photonic and analog **layout** provenance. gdsfactory is an open-source Python

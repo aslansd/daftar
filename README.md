@@ -279,6 +279,7 @@ knowing something a generic tracker cannot infer.
 | `cpm` | parameter **bounds and priors** (resolved to the scipy distribution and its arguments), estimator and its scipy settings, restart counts and the initial guesses themselves, per-participant convergence, cohort hash |
 | `brian2` | **the integration method Brian2 actually chose** — its default is a candidate list and the winner is stored nowhere — plus resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
 | `gdsfactory` | **the content hash of the written GDS** — the mask a foundry receives, which carries no record of what made it — plus the active PDK and its layer map, the library stack that moves polygons between versions, and the design settings |
+| `netpyne` | **whether the compiled NEURON mechanism library is stale** — a `.mod` edit without `nrnivmodl` silently runs the old binary — plus NetPyNE's four RNG seeds, `hParams`, the realised connection count, and per-section model hashes |
 | `nilearn` | **which confounds were regressed out** (a runtime argument nilearn forgets), the mask that actually resolved, the atlas region count, GLM design columns, and `cov_estimator` resolving to Ledoit-Wolf |
 | `sbi` | **the training hyperparameters sbi discards** and whether training converged or hit the epoch limit, the resolved density-estimator architecture, and the proposal each round drew from |
 | `mne` | **which ICA components were excluded** and whether ICA converged, filter *design* rather than just the band, bad channels, epoch drop counts and reasons — with subject data hashed, never stored |
@@ -304,7 +305,7 @@ with none of them installed. Every probe is best-effort: a provenance tool that
 crashes a four-hour simulation because a framework renamed an attribute has done
 far more harm than the missing field was worth.
 
-All eight are verified against live installs by `tests/test_adapters_live.py`.
+All nine are verified against live installs by `tests/test_adapters_live.py`.
 See `examples/adapter_usage.py` for the pattern for each, and
 [INSTALL.md](INSTALL.md) for which environment each needs — they do not all fit
 in one.
