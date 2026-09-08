@@ -1137,3 +1137,129 @@ def test_nilearn_glm_records_the_design_matrix(store):
     assert m.get("param.glm.design_sha256")
     assert "a" in m.get("param.glm.design_columns")
     assert m.get("result.contrast.a_minus_b.max")
+
+
+# ==========================================================================
+# gdsfactory
+# ==========================================================================
+
+def _gf_pdk():
+    """Activate the open generic PDK. gdsfactory refuses to build without one."""
+    import gdsfactory as gf
+
+    gf.gpdk.PDK.activate()
+    return gf
+
+
+@_require("gdsfactory")
+def test_gdsfactory_records_pdk_and_library_stack(store):
+    """The PDK is the process, and the library stack moves polygons."""
+    from daftar.adapters import gdsfactory as gfa
+
+    gf = _gf_pdk()
+    with daftar.track("layout", seed=0, store=store) as run:
+        gfa.build(gf.components.mzi, run, delta_length=20.0)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    assert m.get("param.pdk.active") == "true"
+    assert m.get("param.pdk.name") == "generic"
+    assert m.get("param.pdk.version")
+    assert int(m.get("param.pdk.n_cells")) > 0
+    assert len(m.get("param.pdk.layer_map_sha256")) == 16
+
+    # gdsfactory sits on kfactory sits on KLayout; any of them can move geometry.
+    assert m.get("param.gdsfactory.version")
+    assert m.get("param.gdsfactory.kfactory_version")
+
+
+@_require("gdsfactory")
+def test_gdsfactory_records_the_gds_content_hash(store):
+    """A GDSII stream has no idea what produced it.
+
+    The GDS is the artifact that goes to a foundry. Its content hash is the only
+    thing that identifies which mask, and it belongs next to the settings, PDK
+    and library versions that produced it.
+    """
+    from daftar.adapters import gdsfactory as gfa
+
+    gf = _gf_pdk()
+    with daftar.track("layout", seed=0, store=store) as run:
+        gfa.build(gf.components.mzi, run, delta_length=20.0)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert len(m.get("result.layout.gds_sha256")) == 16
+    assert int(m.get("result.layout.gds_bytes")) > 0
+
+    # Design parameters, recorded readably rather than hashed into a cell name.
+    assert m.get("param.layout.function") == "mzi"
+    assert m.get("param.layout.setting.delta_length") == "20"
+    assert m.get("param.layout.arg.delta_length") == "20.0"
+    assert m.get("param.layout.n_ports") == "2"
+
+
+@_require("gdsfactory")
+def test_gdsfactory_same_design_reproduces(store):
+    """Identical parameters must produce an identical mask."""
+    from daftar.adapters import gdsfactory as gfa
+
+    gf = _gf_pdk()
+    ids = []
+    for _ in range(2):
+        with daftar.track("layout", seed=0, store=store) as run:
+            gfa.build(gf.components.mzi, run, delta_length=20.0)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    assert a.get("result.layout.gds_sha256") == b.get("result.layout.gds_sha256")
+    d = daftar.diff_manifests(a, b)
+    assert not d.causes, [c.key for c in d.causes]
+    assert not d.effects, [c.key for c in d.effects]
+
+
+@_require("gdsfactory")
+def test_gdsfactory_changed_parameter_is_a_cause_of_a_new_mask(store):
+    """A different delta_length is a different mask, and the diff says so."""
+    from daftar.adapters import gdsfactory as gfa
+
+    gf = _gf_pdk()
+    ids = []
+    for delta in (20.0, 40.0):
+        with daftar.track("layout", seed=0, store=store) as run:
+            gfa.build(gf.components.mzi, run, delta_length=delta)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    causes = [c.key for c in daftar.diff_manifests(a, b).causes]
+    effects = [c.key for c in daftar.diff_manifests(a, b).effects]
+
+    assert "param.layout.setting.delta_length" in causes
+    assert "result.layout.gds_sha256" in effects
+    assert a.get("result.layout.gds_sha256") != b.get("result.layout.gds_sha256")
+
+
+@_require("gdsfactory")
+def test_gdsfactory_write_gds_records_the_written_file(store, tmp_path):
+    """write_gds records the file actually written, not a probe copy."""
+    from daftar.adapters import gdsfactory as gfa
+
+    gf = _gf_pdk()
+    out = tmp_path / "mzi.gds"
+
+    with daftar.track("tapeout", seed=0, store=store) as run:
+        component = gf.components.mzi(delta_length=20.0)
+        gfa.write_gds(component, out, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert out.exists()
+    assert len(m.get("result.layout.gds_sha256")) == 16
+    # The written file is also registered as a tracked output.
+    assert m.get("output.mzi.gds.sha256")
+    # Connectivity, hashed independently of geometry.
+    assert m.get("param.layout.netlist_sha256")
+    # Geometry summary from a flattened copy.
+    assert int(m.get("result.layout.n_polygons")) > 0
+    assert m.get("param.layout.layers_used")
