@@ -183,6 +183,45 @@ with daftar.track("npe", seed=42) as run:
 # but not what each drew from.
 '''
 
+# --------------------------------------------------------------- Nilearn ---
+NILEARN = '''
+from nilearn.maskers import NiftiLabelsMasker
+from nilearn.connectome import ConnectivityMeasure
+import daftar
+from daftar.adapters import nilearn as nla
+
+confounds = pd.read_csv("sub-01_desc-confounds_timeseries.tsv", sep="\t")
+keep = [c for c in confounds if c.startswith(("trans_", "rot_"))] + ["csf"]
+
+with daftar.track("connectivity", seed=42) as run:
+    nla.describe_environment(run)
+    nla.describe_image(func_img, run)
+
+    masker = NiftiLabelsMasker(atlas, standardize="zscore_sample", t_r=2.0)
+    ts = nla.fit_transform(masker, func_img, run, confounds=confounds[keep])
+
+    measure = ConnectivityMeasure(kind="correlation", vectorize=True)
+    conn = nla.connectivity_fit_transform(measure, [ts], run)
+
+# Recorded automatically:
+#   confounds.names, .n_regressors, .n_motion, .n_tissue, .n_compcor
+#   confounds.values_sha256           <- values hashed, never stored
+#   masker.mask_resolved, .mask_n_voxels   <- mask_img=None computes per subject
+#   masker.n_labels, .labels_sha256   <- how many regions actually resolved
+#   connectivity.kind = correlation
+#   connectivity.cov_estimator = None
+#   connectivity.cov_estimator_resolved = LedoitWolf   <- shrinkage, declared None
+#   result.connectivity.mean, .abs_max
+#
+# The confounds are the point. fit_transform(confounds=...) regresses them out
+# and stores nothing -- get_params() has no `confounds` key -- yet which columns
+# you chose determines every connectivity value. It is the ica.exclude of fMRI.
+#
+# cov_estimator is the subtle one: declared None, resolved to Ledoit-Wolf
+# shrinkage, which pulls the covariance toward the identity and on weakly
+# correlated data can dominate the result entirely.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -240,7 +279,7 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN),
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
