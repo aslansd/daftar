@@ -954,3 +954,186 @@ def test_sbi_posterior_records_the_observation_by_hash(store):
     causes = [c.key for c in daftar.diff_manifests(a, b).causes]
     assert "param.posterior.x_o_sha256" in causes
     assert a.get("result.posterior.mean")
+
+
+# ==========================================================================
+# Nilearn
+# ==========================================================================
+
+def _nilearn_data(n_vols=40, seed=0):
+    """A tiny synthetic 4D image plus an fMRIPrep-shaped confounds table."""
+    import nibabel as nib
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+    img = nib.Nifti1Image(
+        rng.normal(size=(6, 6, 6, n_vols)).astype("float32"), np.eye(4)
+    )
+    confounds = pd.DataFrame(
+        rng.normal(size=(n_vols, 8)),
+        columns=["trans_x", "trans_y", "trans_z", "rot_x", "rot_y", "rot_z",
+                 "csf", "white_matter"],
+    )
+    return img, confounds
+
+
+@_require("nilearn")
+def test_nilearn_records_confounds_that_the_masker_forgets(store):
+    """fit_transform(confounds=...) regresses them out and stores nothing.
+
+    Which columns were regressed is one of the largest free parameters in fMRI
+    and is not recoverable from the masker afterwards -- get_params() has no
+    `confounds` key. This is the ica.exclude of fMRI.
+    """
+    from nilearn.maskers import NiftiMasker
+
+    from daftar.adapters import nilearn as nla
+
+    img, confounds = _nilearn_data()
+    masker = NiftiMasker(standardize="zscore_sample", detrend=True)
+
+    with daftar.track("denoise", seed=42, store=store) as run:
+        nla.describe_environment(run)
+        nla.describe_image(img, run)
+        nla.fit_transform(masker, img, run, confounds=confounds)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    assert m.get("param.confounds.applied") == "true"
+    assert m.get("param.confounds.n_regressors") == "8"
+    # The taxonomy, so a diff can say "motion changed" not "compare two lists".
+    assert m.get("param.confounds.n_motion") == "6"
+    assert m.get("param.confounds.n_tissue") == "2"
+    assert "trans_x" in m.get("param.confounds.names")
+    # Values are subject data: hashed, never stored.
+    assert len(m.get("param.confounds.values_sha256")) == 16
+    assert "0." not in m.get("param.confounds.names")
+
+    # The declared config is recorded too.
+    assert m.get("param.masker.standardize") == "zscore_sample"
+    assert m.get("param.masker.detrend") == "true"
+
+
+@_require("nilearn")
+def test_nilearn_records_the_mask_that_actually_resolved(store):
+    """mask_img=None means the mask is computed from the data, per subject."""
+    from nilearn.maskers import NiftiMasker
+
+    from daftar.adapters import nilearn as nla
+
+    img, _ = _nilearn_data()
+    masker = NiftiMasker(standardize="zscore_sample")
+
+    with daftar.track("mask", seed=42, store=store) as run:
+        nla.fit_transform(masker, img, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    # Declared: None. Resolved: a specific number of voxels.
+    assert m.get("param.masker.mask_img") == "null"
+    assert m.get("param.masker.mask_resolved") == "true"
+    assert int(m.get("param.masker.mask_n_voxels")) > 0
+    assert int(m.get("result.masker.timeseries.n_timepoints")) == 40
+    assert m.get("param.confounds.applied") == "false"
+
+
+@_require("nilearn")
+def test_nilearn_changed_confound_set_is_a_cause(store):
+    """Dropping the tissue regressors changes every downstream number."""
+    from nilearn.maskers import NiftiMasker
+
+    from daftar.adapters import nilearn as nla
+
+    img, confounds = _nilearn_data()
+    ids = []
+    for cols in (list(confounds.columns), ["trans_x", "trans_y", "trans_z"]):
+        with daftar.track("denoise", seed=42, store=store) as run:
+            nla.fit_transform(NiftiMasker(standardize="zscore_sample"), img, run,
+                              confounds=confounds[cols])
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    causes = [c.key for c in daftar.diff_manifests(a, b).causes]
+    assert "param.confounds.names" in causes
+    assert "param.confounds.n_regressors" in causes
+    assert "param.confounds.values_sha256" in causes
+
+
+@_require("nilearn")
+def test_nilearn_records_parcellation_and_connectivity_kind(store):
+    """`kind` changes the numbers entirely; n_labels identifies the atlas."""
+    import nibabel as nib
+    import numpy as np
+    from nilearn.connectome import ConnectivityMeasure
+    from nilearn.maskers import NiftiLabelsMasker
+
+    from daftar.adapters import nilearn as nla
+
+    img, confounds = _nilearn_data()
+    rng = np.random.default_rng(1)
+    atlas = nib.Nifti1Image(
+        rng.integers(0, 5, size=(6, 6, 6)).astype("int16"), np.eye(4)
+    )
+
+    with daftar.track("connectivity", seed=42, store=store) as run:
+        masker = NiftiLabelsMasker(atlas, standardize="zscore_sample")
+        ts = nla.fit_transform(masker, img, run, confounds=confounds)
+        measure = ConnectivityMeasure(kind="correlation", vectorize=True)
+        nla.connectivity_fit_transform(measure, [ts], run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert int(m.get("param.masker.n_labels")) >= 4
+    assert m.get("param.masker.labels_sha256")
+    assert m.get("param.connectivity.kind") == "correlation"
+    assert m.get("param.connectivity.vectorize") == "true"
+    assert m.get("result.connectivity.shape")
+
+    # cov_estimator is declared None and resolves to Ledoit-Wolf shrinkage,
+    # which pulls the covariance toward the identity and can dominate the
+    # result. get_params() reports only the None.
+    assert m.get("param.connectivity.cov_estimator") == "null"
+    assert m.get("param.connectivity.cov_estimator_resolved") == "LedoitWolf"
+    assert m.get("param.connectivity.cov_estimator.was_default") == "true"
+
+
+@_require("nilearn")
+def test_nilearn_glm_records_the_design_matrix(store):
+    """The design matrix is the model; its columns encode every choice."""
+    import numpy as np
+    import pandas as pd
+    from nilearn.glm.first_level import FirstLevelModel
+
+    from daftar.adapters import nilearn as nla
+
+    import nibabel as nib
+
+    img, _ = _nilearn_data(n_vols=40)
+    # An explicit mask: nilearn's automatic masking finds nothing in pure noise,
+    # and a real analysis supplies a brain mask anyway.
+    mask = nib.Nifti1Image(np.ones((6, 6, 6), dtype="uint8"), np.eye(4))
+    events = pd.DataFrame({
+        "onset": [4.0, 20.0, 44.0],
+        "duration": [4.0, 4.0, 4.0],
+        "trial_type": ["a", "b", "a"],
+    })
+
+    with daftar.track("glm", seed=42, store=store) as run:
+        model = FirstLevelModel(t_r=2.0, hrf_model="spm", drift_model="cosine",
+                                high_pass=0.01, noise_model="ar1",
+                                mask_img=mask, minimize_memory=False)
+        model.fit(img, events=events)
+        nla.describe_glm(model, run)
+        nla.describe_contrast("a_minus_b", model.compute_contrast("a - b"), run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.glm.t_r") == "2.0"
+    assert m.get("param.glm.hrf_model") == "spm"
+    assert m.get("param.glm.noise_model") == "ar1"
+    assert m.get("param.glm.n_design_columns")
+    assert m.get("param.glm.design_sha256")
+    assert "a" in m.get("param.glm.design_columns")
+    assert m.get("result.contrast.a_minus_b.max")
