@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from . import (
     brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter, mne_adapter,
-    gdsfactory_adapter, nilearn_adapter, sbi_adapter,
+    gdsfactory_adapter, netpyne_adapter, nilearn_adapter, sbi_adapter,
 )
 from .base import (
     AVAILABLE, BROKEN, MISSING, Adapter, AdapterRegistry, probe_import,
@@ -25,6 +25,7 @@ registry.register("mne", mne_adapter)
 registry.register("sbi", sbi_adapter)
 registry.register("nilearn", nilearn_adapter)
 registry.register("gdsfactory", gdsfactory_adapter)
+registry.register("netpyne", netpyne_adapter)
 
 jaxley = jaxley_adapter
 cpm = cpm_adapter
@@ -34,6 +35,7 @@ mne = mne_adapter
 sbi = sbi_adapter
 nilearn = nilearn_adapter
 gdsfactory = gdsfactory_adapter
+netpyne = netpyne_adapter
 
 
 def available() -> list[str]:
@@ -65,9 +67,9 @@ def get(name: str):
 
 __all__ = [
     "registry", "available", "get",
-    "jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory",
+    "jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory", "netpyne",
     "jaxley_adapter", "cpm_adapter", "meltingpot_adapter", "brian2_adapter",
-    "mne_adapter", "sbi_adapter", "nilearn_adapter", "gdsfactory_adapter",
+    "mne_adapter", "sbi_adapter", "nilearn_adapter", "gdsfactory_adapter", "netpyne_adapter",
     "Adapter", "AdapterRegistry", "safe", "record_optional",
     "status", "probe_import", "AVAILABLE", "MISSING", "BROKEN",
 ]
