@@ -251,6 +251,38 @@ with daftar.track("mzi-tapeout", seed=0) as run:
 # on two machines can produce different masks and nothing in the output says so.
 '''
 
+# --------------------------------------------------------------- NetPyNE ---
+NETPYNE = '''
+from netpyne import specs
+import daftar
+from daftar.adapters import netpyne as npa
+
+netParams = specs.NetParams()
+# ... popParams, cellParams, connParams, synMechParams ...
+cfg = specs.SimConfig()
+cfg.duration, cfg.dt = 1000, 0.025
+
+with daftar.track("cortical-net", seed=42) as run:
+    npa.run_sim(netParams, cfg, run)
+
+# Recorded automatically:
+#   neuron.compiled_lib_stale = true   <- .mod edited, nrnivmodl NOT re-run
+#   neuron.stale_warning               <- in plain language
+#   neuron.mod_sources_sha256, .compiled_lib_sha256, .compiled_arch
+#   sim.seed.conn / .stim / .loc / .cell   <- set from the daftar run seed
+#   sim.hParams.celsius = 6.3          <- global NEURON state, rarely set
+#   model.connParams_sha256, .netParams_sha256
+#   result.network.n_connections       <- probability=0.2 draws a new graph
+#   result.spikes.n_spikes, .mean_rate_hz
+#
+# The stale-mechanism check is the reason this adapter exists. NEURON compiles
+# .mod files into x86_64/libnrnmech.so and runs whatever binary is there. Edit a
+# mechanism, forget nrnivmodl, and the simulation silently uses the old one.
+#
+# NetPyNE's four RNG seeds live on the config object, not a module, so daftar's
+# core seeding cannot reach them -- run_sim sets them from the run's seed.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -308,7 +340,7 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN), ("gdsfactory", GDSFACTORY),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN), ("gdsfactory", GDSFACTORY), ("NetPyNE", NETPYNE),
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
