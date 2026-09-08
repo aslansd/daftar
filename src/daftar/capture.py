@@ -28,7 +28,7 @@ from typing import Any
 _ALWAYS_RECORD = (
     "numpy", "scipy", "pandas", "jax", "jaxlib", "jaxley", "torch",
     "equinox", "brian2", "neuron", "cpm-toolbox", "cpm", "cython", "sympy",
-    "mne", "scikit-learn", "sklearn", "sbi", "zuko", "nflows", "pyknos", "nilearn", "nibabel", "dm-meltingpot",
+    "mne", "scikit-learn", "sklearn", "sbi", "zuko", "nflows", "pyknos", "nilearn", "nibabel", "gdsfactory", "kfactory", "klayout", "dm-meltingpot",
     "dmlab2d", "gdm-concordia", "matplotlib", "scikit-learn",
 )
 
