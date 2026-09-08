@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.1
+
+**Fixed: a package whose *dependency* is missing was reported as missing itself.**
+
+`pip install netpyne` does not pull NEURON, so `import netpyne` raises
+`ImportError: No module named 'neuron'`. `probe_import` matched on the message
+and concluded netpyne was not installed — false, and it sends the user to
+reinstall a package they already have while `pip` insists the requirement is
+already satisfied.
+
+`ImportError.name` says *which* module was missing, so the cases can be told
+apart precisely. `daftar doctor` now reports:
+
+```
+netpyne     BROKEN  installed, but its dependency 'neuron' is not (pip install neuron)
+```
+
+This is the same distinction as 0.3.1's "installed but broken" versus "not
+installed", one level deeper. Three outcomes, all of which need a different
+response from the user: the package is absent, the package is present but a
+dependency is absent, or it imports.
+
 ## 0.8.0 — NetPyNE / NEURON
 
 The largest install base in computational neuroscience, and the worst provenance

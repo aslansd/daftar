@@ -34,7 +34,7 @@ frameworks do not track. As of this writing:
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
 | mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
-| netpyne ≥ 1.0 | needs **NEURON**, and a C compiler for `nrnivmodl` | shares Environment A; mechanisms must be compiled per machine |
+| netpyne ≥ 1.0 | needs **NEURON**, which `pip install netpyne` does **not** pull, plus a C compiler for `nrnivmodl` | install `neuron` explicitly; shares Environment A |
 | gdsfactory ≥ 9 | **Python ≥ 3.12, < 3.15**; pulls KLayout | shares Environment A; the Python floor is strict |
 | nilearn ≥ 0.11 | `scikit-learn`, `nibabel`, Python ≥ 3.9 | unconstrained; shares Environment A |
 | sbi ≥ 0.23 | pulls **PyTorch**, Python ≥ 3.10 | large download; otherwise unconstrained and shares Environment A |
@@ -54,7 +54,8 @@ conda create --name daftar312 python=3.12
 conda activate daftar312
 
 pip install daftar
-pip install brian2 jaxley cpm-toolbox mne sbi nilearn gdsfactory netpyne neuron
+pip install brian2 jaxley cpm-toolbox mne sbi nilearn gdsfactory netpyne
+pip install neuron              # netpyne does NOT pull this itself
 #   sbi pulls PyTorch (~2 GB); gdsfactory pulls KLayout; netpyne pulls NEURON
 pip install scikit-learn        # MNE's default ICA (fastica) delegates to it
 pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6; mne is fine with it
