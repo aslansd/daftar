@@ -222,6 +222,35 @@ with daftar.track("connectivity", seed=42) as run:
 # correlated data can dominate the result entirely.
 '''
 
+# ------------------------------------------------------------ gdsfactory ---
+GDSFACTORY = '''
+import gdsfactory as gf
+import daftar
+from daftar.adapters import gdsfactory as gfa
+
+gf.gpdk.PDK.activate()          # gdsfactory refuses to build without a PDK
+
+with daftar.track("mzi-tapeout", seed=0) as run:
+    c = gfa.build(gf.components.mzi, run, delta_length=20.0)
+    gfa.write_gds(c, "mzi.gds", run)
+
+# Recorded automatically:
+#   result.layout.gds_sha256    <- content hash of the mask itself
+#   pdk.name = generic          pdk.version      pdk.layer_map_sha256
+#   gdsfactory.version, .kfactory_version, .klayout_version
+#   layout.setting.delta_length, .arg.delta_length, .n_ports, .bbox_um
+#   layout.netlist_sha256       <- connectivity, independent of geometry
+#   result.layout.n_polygons, .width_um, .height_um
+#
+# The GDS is the artifact a foundry receives and it carries no record of what
+# produced it -- no script, no parameters, no library version. Its content hash
+# next to the settings and the PDK is the whole point.
+#
+# Note also gdsfactory.version: component generators are library code, so a
+# default bend radius changing between releases moves polygons. The same script
+# on two machines can produce different masks and nothing in the output says so.
+'''
+
 # ------------------------------------------------------------ MeltingPot ---
 MELTINGPOT = '''
 import daftar
@@ -279,7 +308,7 @@ def main():
 
     print("\nReference usage:")
     for title, snippet in (
-        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN),
+        ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN), ("gdsfactory", GDSFACTORY),
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
