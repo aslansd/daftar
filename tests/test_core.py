@@ -742,3 +742,60 @@ def test_failed_fits_are_not_counted_as_converged(store):
         cpma.describe_fit_results(ScipyOpt(), run)
         rid2 = run.run_id
     assert store.load(rid2).get("result.fit.n_converged") == "4"
+
+
+def test_probe_distinguishes_missing_package_from_missing_dependency(store):
+    """`pip install netpyne` does not pull NEURON.
+
+    So `import netpyne` raises ImportError: No module named 'neuron'. Matching
+    on the message alone reported that as "netpyne is not installed" -- false,
+    and it sends the user to reinstall a package they already have. The three
+    outcomes must stay distinct.
+    """
+    import sys
+    import types
+
+    from daftar.adapters.base import AVAILABLE, BROKEN, MISSING, probe_import
+
+    # A package that is genuinely absent.
+    state, reason = probe_import("definitely_not_installed_xyz")
+    assert state == MISSING, (state, reason)
+
+    # A package that is present but whose dependency is not.
+    broken = types.ModuleType("daftar_probe_victim")
+    def _fail():
+        raise ImportError("No module named 'somedep'", name="somedep")
+    broken.__getattr__ = lambda name: _fail()
+
+    class _Loader(dict):
+        pass
+
+    sys.modules.pop("daftar_probe_victim", None)
+    try:
+        # Simulate the import itself raising for a *different* module.
+        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) \
+            else __builtins__.__import__
+
+        def fake_import(name, *a, **kw):
+            if name == "daftar_probe_victim":
+                raise ImportError("No module named 'somedep'", name="somedep")
+            return real_import(name, *a, **kw)
+
+        if isinstance(__builtins__, dict):
+            __builtins__["__import__"] = fake_import
+        else:
+            __builtins__.__import__ = fake_import
+
+        state, reason = probe_import("daftar_probe_victim")
+    finally:
+        if isinstance(__builtins__, dict):
+            __builtins__["__import__"] = real_import
+        else:
+            __builtins__.__import__ = real_import
+
+    assert state == BROKEN, (state, reason)
+    assert "somedep" in reason
+    assert "pip install somedep" in reason
+
+    # And something that actually imports.
+    assert probe_import("json")[0] == AVAILABLE
