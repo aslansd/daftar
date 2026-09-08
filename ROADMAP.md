@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Six adapters, all verified against live installed frameworks. Notebook and
-Colab support. 0.5.0 on PyPI, zero runtime dependencies, Apache 2.0.
+Seven adapters, all verified against live installed frameworks. Notebook and
+Colab support. 0.6.0 on PyPI, zero runtime dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -14,13 +14,14 @@ Colab support. 0.5.0 on PyPI, zero runtime dependencies, Apache 2.0.
 | Brian2 adapter | verified live |
 | MNE-Python adapter | verified live |
 | sbi adapter | verified live |
+| Nilearn adapter | verified live |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
 tests/test_core.py            44 passed
 tests/test_notebook.py        15 passed
-tests/test_adapters_live.py   22 (skip whatever is absent)
+tests/test_adapters_live.py   27 (skip whatever is absent)
 ```
 
 The initial version is done. Everything below is about what comes next, and the
@@ -35,7 +36,7 @@ what it does not say: number of adapters. Adapter count is a vanity metric — i
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Six adapters with zero users and twelve adapters with zero users are the same
+Seven adapters with zero users and fourteen adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
@@ -84,7 +85,7 @@ An adapter is worth writing only if all five hold:
    eLife, SNUFA, Neuromatch and Mathematics of Neuroscience. An adapter you
    cannot distribute is a hobby.
 4. **The framework is stable enough not to rot.** Every adapter is a maintenance
-   liability against someone else's release schedule — and three of the six
+   liability against someone else's release schedule — and three of the seven
    existing ones have already broken against a dependency.
 5. **It stays inside the envelope.** Unregulated, non-dual-use, Python, runs on
    a laptop.
@@ -131,15 +132,24 @@ it is a clever demo attached to an unused tool.
 
 - **Generic PyTorch / scikit-learn** — what W&B and MLflow already do well and
   for free. Do not compete on their ground.
-- **Nilearn / fMRIPrep** — fMRIPrep already emits good BIDS-derivative
-  provenance. A second layer helps nobody.
+- **fMRIPrep** — it already emits good BIDS-derivative provenance and a
+  boilerplate methods paragraph. A second layer over the *preprocessing* helps
+  nobody.
+
+  An earlier version of this list read "Nilearn / fMRIPrep" and dismissed both
+  together. **That was wrong**, and the error is worth naming: it conflated a
+  preprocessing pipeline with the analysis library that runs after it.
+  fMRIPrep's provenance stops exactly where nilearn begins, and everything on
+  the nilearn side — which confounds were regressed out, which atlas, which
+  masker settings, which GLM design — was as unrecorded as anything else this
+  package handles. Nilearn shipped in 0.6.0.
 - **MuJoCo, Genesis, Isaac** — robotics customers are defence-adjacent.
 - **CFD / HydroGym** — same, plus baselines needing 150,000 GPU-hours.
 - **EDA / chip design** — fails two criteria simultaneously.
 
 ---
 
-## Non-adapter work worth more than a fifth adapter
+## Non-adapter work worth more than an eighth adapter
 
 **A pytest plugin.** Runs inside a test suite tracked automatically. Small, and
 it makes daftar useful in CI as a regression check on your own results, which

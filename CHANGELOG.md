@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.6.0 — Nilearn
+
+**A correction first.** An earlier version of `ROADMAP.md` listed "Nilearn /
+fMRIPrep" under *not on the list*, on the grounds that fMRIPrep already emits
+good BIDS-derivative provenance. That was wrong, and the error was conflating a
+preprocessing pipeline with the analysis library that runs after it. fMRIPrep's
+provenance stops exactly where nilearn begins.
+
+Nilearn objects are scikit-learn estimators, so `get_params()` already exposes
+the declared configuration and a generic tracker could capture it. The adapter
+earns its place on what `get_params()` cannot reach.
+
+**The confounds.** `masker.fit_transform(img, confounds=df)` takes them as a
+*runtime argument*: they are regressed out and then forgotten. Nothing is stored
+on the masker and `get_params()` has no `confounds` key. Which columns you chose
+— 6 motion regressors, 24 with derivatives and squares, aCompCor, global signal
+— determines every connectivity value and every GLM coefficient, and it is
+typically a hand-written list comprehension over an fMRIPrep TSV. **This is the
+`ica.exclude` of fMRI.** Recorded by name, with a coarse taxonomy (`n_motion`,
+`n_compcor`, `n_tissue`, `n_scrub`, `n_cosine`) so a diff can say "the tissue
+regressors were dropped" rather than making the reader compare two 24-element
+lists.
+
+**The mask that actually resolved.** With `mask_img=None` the mask is *computed
+from the data*, so it differs per subject and per `mask_strategy`. The declared
+parameter says `None`; only `mask_img_` says how many voxels ran.
+
+**`cov_estimator` resolving to Ledoit-Wolf.** `ConnectivityMeasure` declares
+`cov_estimator=None` and resolves it after fitting to Ledoit-Wolf shrinkage,
+which pulls the covariance toward the identity. On weakly correlated data that
+shrinkage dominates: two analyses differing in a preprocessing choice can
+produce *identical* connectivity because both were shrunk to the same place.
+`get_params()` reports only the `None`. Found while investigating why a demo
+diff showed no effect — the shrinkage was the reason, and it is now recorded.
+
+Also recorded: image geometry and affine hash, atlas region counts, GLM design
+matrix columns and shape, and contrast map summaries.
+
+### On subject data
+
+fMRI recordings are health data, so the adapter records structure and never
+content. File paths are hashed, confound **column names** are recorded but their
+**values** only hashed, and images are summarised by geometry. Same reasoning as
+the MNE adapter: manifests get committed to public repositories.
+
+Five live tests against real nilearn maskers, connectivity and GLM.
+
 ## 0.5.0 — sbi
 
 sbi has the same shape of problem as the other adapters, in a more acute form:

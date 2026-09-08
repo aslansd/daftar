@@ -277,6 +277,7 @@ knowing something a generic tracker cannot infer.
 | `jaxley` | morphology (compartments, branches, channels, synapses), `jx.integrate` defaults you never passed, `jax_enable_x64`, backend |
 | `cpm` | parameter **bounds and priors** (resolved to the scipy distribution and its arguments), estimator and its scipy settings, restart counts and the initial guesses themselves, per-participant convergence, cohort hash |
 | `brian2` | **the integration method Brian2 actually chose** — its default is a candidate list and the winner is stored nowhere — plus resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
+| `nilearn` | **which confounds were regressed out** (a runtime argument nilearn forgets), the mask that actually resolved, the atlas region count, GLM design columns, and `cov_estimator` resolving to Ledoit-Wolf |
 | `sbi` | **the training hyperparameters sbi discards** and whether training converged or hit the epoch limit, the resolved density-estimator architecture, and the proposal each round drew from |
 | `mne` | **which ICA components were excluded** and whether ICA converged, filter *design* rather than just the band, bad channels, epoch drop counts and reasons — with subject data hashed, never stored |
 | `meltingpot` | resolved substrate ConfigDict hash, roles, episode-length cap, pinned bot checkpoints, per-player returns and Gini |
@@ -288,10 +289,11 @@ with daftar.track("balanced-net", seed=42) as run:
     b2a.run_network(net, 1*second, run)
 ```
 
-The MNE adapter deserves a note on privacy: it runs against human neuroimaging
-recordings, so it records structure and never content. `subject_info` and file
-paths are hashed rather than stored, and `meas_date` is recorded only as present
-or absent, because dates of service are themselves identifiers. Manifests get
+The MNE and nilearn adapters deserve a note on privacy: it runs against human neuroimaging
+recordings, so they record structure and never content. Subject metadata and
+file paths are hashed rather than stored, `meas_date` is recorded only as
+present or absent because dates of service are identifiers, and confound
+*column names* are recorded while their values are only hashed. Manifests get
 committed to public repositories; nothing the adapter writes should make that a
 mistake.
 
@@ -300,7 +302,7 @@ with none of them installed. Every probe is best-effort: a provenance tool that
 crashes a four-hour simulation because a framework renamed an attribute has done
 far more harm than the missing field was worth.
 
-All six are verified against live installs by `tests/test_adapters_live.py`.
+All seven are verified against live installs by `tests/test_adapters_live.py`.
 See `examples/adapter_usage.py` for the pattern for each, and
 [INSTALL.md](INSTALL.md) for which environment each needs — they do not all fit
 in one.

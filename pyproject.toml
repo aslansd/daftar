@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "daftar"
-version = "0.5.0"
+version = "0.6.0"
 description = "Record what produced each computational result: environment, code, parameters, seeds, inputs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,9 +32,10 @@ meltingpot = ["dm-meltingpot"]
 brian2 = ["brian2"]
 mne = ["mne", "scikit-learn"]
 sbi = ["sbi"]
+nilearn = ["nilearn"]
 dev = ["pytest>=7", "numpy", "ipython"]
 notebook = ["ipython"]
-all = ["jaxley", "cpm-toolbox", "dm-meltingpot", "brian2", "mne", "scikit-learn", "sbi"]
+all = ["jaxley", "cpm-toolbox", "dm-meltingpot", "brian2", "mne", "scikit-learn", "sbi", "nilearn"]
 
 [project.scripts]
 daftar = "daftar.cli:main"
