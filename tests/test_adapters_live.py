@@ -15,6 +15,8 @@ Run this after every upgrade of a target framework, not just at release.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import daftar
@@ -1263,3 +1265,175 @@ def test_gdsfactory_write_gds_records_the_written_file(store, tmp_path):
     # Geometry summary from a flattened copy.
     assert int(m.get("result.layout.n_polygons")) > 0
     assert m.get("param.layout.layers_used")
+
+
+# ==========================================================================
+# NetPyNE
+# ==========================================================================
+
+def _netpyne_model(prob=0.2, duration=50.0):
+    """A small HH network: 10 cells, probabilistic recurrent connectivity."""
+    from netpyne import specs
+
+    net_params = specs.NetParams()
+    net_params.cellParams["PYR"] = {
+        "secs": {"soma": {"geom": {"diam": 18.8, "L": 18.8, "Ra": 123.0},
+                          "mechs": {"hh": {"gnabar": 0.12, "gkbar": 0.036,
+                                           "gl": 0.003, "el": -70}}}}}
+    net_params.popParams["E"] = {"cellType": "PYR", "numCells": 10}
+    net_params.synMechParams["exc"] = {"mod": "Exp2Syn", "tau1": 0.1,
+                                       "tau2": 5.0, "e": 0}
+    net_params.stimSourceParams["bg"] = {"type": "NetStim", "rate": 20,
+                                         "noise": 0.5}
+    net_params.stimTargetParams["bg->E"] = {
+        "source": "bg", "conds": {"pop": "E"},
+        "weight": 0.01, "delay": 5, "synMech": "exc"}
+    net_params.connParams["E->E"] = {
+        "preConds": {"pop": "E"}, "postConds": {"pop": "E"},
+        "probability": prob, "weight": 0.005, "delay": 5, "synMech": "exc"}
+
+    cfg = specs.SimConfig()
+    cfg.duration = duration
+    cfg.dt = 0.025
+    cfg.recordStep = 0.1
+    cfg.verbose = False
+    cfg.saveJson = False
+    cfg.printPopAvgRates = False
+    return net_params, cfg
+
+
+@_require("netpyne")
+def test_netpyne_records_compiled_mechanism_state(store, tmp_path, monkeypatch):
+    """A stale compiled library silently runs the previous mechanism.
+
+    NEURON compiles .mod sources into x86_64/libnrnmech.so and loads whatever
+    binary is present. Edit a mechanism, forget nrnivmodl, and the simulation
+    keeps using the old one without a word. This is the failure the adapter
+    exists to catch.
+    """
+    from daftar.adapters import netpyne as npa
+
+    work = tmp_path / "mech"
+    work.mkdir()
+    (work / "mymech.mod").write_text(
+        "NEURON { SUFFIX daftartest RANGE g }\n"
+        "PARAMETER { g = 0.001 }\n"
+        "ASSIGNED { v i }\n"
+        "BREAKPOINT { i = g*v }\n"
+    )
+    arch = work / "x86_64"
+    arch.mkdir()
+    lib = arch / "libnrnmech.so"
+    lib.write_bytes(b"\x7fELF fake compiled library")
+
+    # Compiled after the source: not stale.
+    os.utime(work / "mymech.mod", (1000, 1000))
+    os.utime(lib, (2000, 2000))
+
+    with daftar.track("mech-fresh", store=store) as run:
+        npa.describe_mechanisms(run, search_dir=str(work))
+        fresh = run.run_id
+
+    m = store.load(fresh)
+    assert m.get("param.neuron.n_mod_files") == "1"
+    assert m.get("param.neuron.compiled_mechanisms") == "true"
+    assert len(m.get("param.neuron.compiled_lib_sha256")) == 16
+    assert len(m.get("param.neuron.mod_sources_sha256")) == 16
+    assert m.get("param.neuron.compiled_lib_stale") == "false"
+    assert m.get("param.neuron.compiled_arch") == "x86_64"
+
+    # Now edit the source without recompiling.
+    (work / "mymech.mod").write_text("NEURON { SUFFIX daftartest RANGE g, e }\n")
+    os.utime(work / "mymech.mod", (3000, 3000))
+
+    with daftar.track("mech-stale", store=store) as run:
+        npa.describe_mechanisms(run, search_dir=str(work))
+        stale = run.run_id
+
+    s = store.load(stale)
+    assert s.get("param.neuron.compiled_lib_stale") == "true"
+    assert "Re-run nrnivmodl" in s.get("param.neuron.stale_warning")
+
+    # And the source hash changed, so the diff names the cause.
+    causes = [c.key for c in
+              daftar.diff_manifests(store.load(fresh), s).causes]
+    assert "param.neuron.mod_sources_sha256" in causes
+
+
+@_require("netpyne")
+def test_netpyne_records_seeds_config_and_network(store):
+    """NetPyNE's four RNG seeds are not reachable from numpy seeding."""
+    from daftar.adapters import netpyne as npa
+
+    net_params, cfg = _netpyne_model()
+
+    with daftar.track("net", seed=42, store=store) as run:
+        npa.run_sim(net_params, cfg, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+
+    # Seeds set from the run's seed, and recorded as applied.
+    assert m.get("seed.netpyne") == "true"
+    assert m.get("param.sim.seed.conn") == "42"
+    assert m.get("param.sim.seed.stim") == "43"
+    assert m.get("param.sim.seeds_all_default") == "false"
+
+    # Global NEURON state that changes every temperature-dependent rate.
+    assert m.get("param.sim.hParams.celsius")
+    assert m.get("param.sim.dt") == "0.025"
+    assert m.get("param.sim.duration") == "50.0"
+
+    # Model structure by section hash.
+    assert m.get("param.model.n_popParams") == "1"
+    assert m.get("param.model.connParams_sha256")
+    assert m.get("param.model.netParams_sha256")
+
+    # The realised network, which the parameters do not contain.
+    assert m.get("result.network.n_cells") == "10"
+    assert int(m.get("result.network.n_connections")) > 0
+    assert m.get("param.network.nhosts") == "1"
+    assert m.get("result.spikes.n_spikes")
+
+    assert m.get("param.netpyne.neuron_build")
+
+
+@_require("netpyne")
+def test_netpyne_connectivity_reproduces_with_the_same_seed(store):
+    """probability=0.2 draws a different graph each time unless seeded."""
+    from daftar.adapters import netpyne as npa
+
+    ids = []
+    for _ in range(2):
+        net_params, cfg = _netpyne_model()
+        with daftar.track("net", seed=7, store=store) as run:
+            npa.run_sim(net_params, cfg, run)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    assert a.get("result.network.n_connections") == b.get("result.network.n_connections")
+    assert a.get("result.spikes.n_spikes") == b.get("result.spikes.n_spikes")
+
+
+@_require("netpyne")
+def test_netpyne_changed_probability_is_a_cause(store):
+    """A different connection probability is a different network."""
+    from daftar.adapters import netpyne as npa
+
+    ids = []
+    for prob in (0.1, 0.5):
+        net_params, cfg = _netpyne_model(prob=prob)
+        with daftar.track("net", seed=7, store=store) as run:
+            npa.run_sim(net_params, cfg, run)
+            ids.append(run.run_id)
+
+    a, b = store.load(ids[0]), store.load(ids[1])
+    d = daftar.diff_manifests(a, b)
+    causes = [c.key for c in d.causes]
+    effects = [c.key for c in d.effects]
+
+    assert "param.model.connParams_sha256" in causes
+    assert "param.model.netParams_sha256" in causes
+    assert "result.network.n_connections" in effects
+    assert int(a.get("result.network.n_connections")) < \
+           int(b.get("result.network.n_connections"))
