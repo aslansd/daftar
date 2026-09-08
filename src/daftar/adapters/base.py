@@ -90,25 +90,39 @@ BROKEN = "broken"
 def probe_import(module_name: str) -> tuple[str, str]:
     """Try to import a framework. Returns ``(status, reason)``.
 
-    ``ImportError`` means the package is not installed, which is ordinary and
-    uninteresting. **Any other exception means it is installed and broken** --
-    an incompatible NumPy, a missing shared library, a version clash with
-    another package. Those two cases need different responses from the user and
-    must not look identical.
+    Three outcomes, and conflating any two of them misleads the user:
 
-    This distinction exists because a bare ``try: import x except: False``
-    reports a broken install as an absent one. The test suite then skips
-    quietly, the adapter is never exercised, and nothing anywhere says why.
+    * **missing** -- the package itself is not installed. Ordinary.
+    * **broken** -- it is installed and will not import. Fixable, and worth
+      saying so: an incompatible NumPy, a missing shared library, or a
+      *dependency* that is not installed.
+    * **available** -- it imports.
+
+    The dependency case is the subtle one. ``pip install netpyne`` does not pull
+    NEURON, so ``import netpyne`` raises ``ImportError: No module named
+    'neuron'``. Matching on the message alone reports that as "netpyne is not
+    installed", which is false and sends the user to reinstall a package they
+    already have. ``ImportError.name`` says *which* module was missing, so the
+    two cases can be told apart precisely.
     """
     try:
         __import__(module_name)
         return AVAILABLE, ""
     except ImportError as exc:
-        # A broken C extension also raises ImportError, so check the message.
-        text = str(exc)
-        if "No module named" in text:
+        missing = getattr(exc, "name", None)
+        root = module_name.split(".", 1)[0]
+        if missing is None:
+            # No name attribute: fall back to the message, which is all we have.
+            text = str(exc)
+            if "No module named" in text and repr(root) in text:
+                return MISSING, "not installed"
+            return BROKEN, f"{type(exc).__name__}: {text}"
+        if missing == root or missing.startswith(root + "."):
             return MISSING, "not installed"
-        return BROKEN, f"{type(exc).__name__}: {text}"
+        return BROKEN, (
+            f"installed, but its dependency {missing!r} is not "
+            f"(pip install {missing})"
+        )
     except Exception as exc:
         return BROKEN, f"{type(exc).__name__}: {exc}"
 
