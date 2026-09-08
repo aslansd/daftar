@@ -11,9 +11,9 @@ What you should see depends on which frameworks are installed:
 
 | Environment | Result |
 |---|---|
-| daftar only | **60 passed, 26 skipped** — the core and notebook suites, plus the adapter status report which always runs |
-| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn) | **84 passed, 2 skipped** — only MeltingPot missing |
-| Environment B (meltingpot) | **62 passed, 24 skipped** |
+| daftar only | **60 passed, 31 skipped** — the core and notebook suites, plus the adapter status report which always runs |
+| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory) | **89 passed, 2 skipped** — only MeltingPot missing |
+| Environment B (meltingpot) | **62 passed, 29 skipped** |
 
 **The core and notebook suites must always pass — 59 tests, no exceptions.**
 Every skip should be a live adapter test whose framework is absent. If anything
@@ -27,7 +27,7 @@ in `test_core.py` or `test_notebook.py` skips, something is wrong.
 |---|---|---|---|
 | `tests/test_core.py` | 44 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store |
 | `tests/test_notebook.py` | 15 | `ipython` | cell hashing, session history, the `%%daftar` magic |
-| `tests/test_adapters_live.py` | 27 | the frameworks | real workloads through each adapter |
+| `tests/test_adapters_live.py` | 32 | the frameworks | real workloads through each adapter |
 
 The core and notebook suites must always pass. They have no optional
 dependencies beyond IPython and they are fast.
@@ -40,7 +40,7 @@ These are separated because they need heavy optional dependencies and are slow.
 They are also the **only** tests that can catch adapter rot.
 
 ```bash
-# Environment A: brian2, jaxley, cpm, mne, sbi, nilearn
+# Environment A: brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory
 conda activate daftar312
 pytest tests/test_adapters_live.py -v
 

@@ -10,7 +10,8 @@ past run can be rebuilt.
 Experiment trackers solved this for deep learning, where an experiment is
 `model.fit()`. They do not help when the experiment is a Hodgkin–Huxley
 simulation of 302 neurons, a hierarchical fit across 60 participants, an EEG
-preprocessing pipeline, or a 200-episode multi-agent sweep. Those runs have no epochs, no loss
+preprocessing pipeline, a photonic layout script, or a 200-episode multi-agent
+sweep. Those runs have no epochs, no loss
 curves, and no checkpoints. They have parameter grids, solver tolerances, random
 seeds, and derived quantities.
 
@@ -277,6 +278,7 @@ knowing something a generic tracker cannot infer.
 | `jaxley` | morphology (compartments, branches, channels, synapses), `jx.integrate` defaults you never passed, `jax_enable_x64`, backend |
 | `cpm` | parameter **bounds and priors** (resolved to the scipy distribution and its arguments), estimator and its scipy settings, restart counts and the initial guesses themselves, per-participant convergence, cohort hash |
 | `brian2` | **the integration method Brian2 actually chose** — its default is a candidate list and the winner is stored nowhere — plus resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
+| `gdsfactory` | **the content hash of the written GDS** — the mask a foundry receives, which carries no record of what made it — plus the active PDK and its layer map, the library stack that moves polygons between versions, and the design settings |
 | `nilearn` | **which confounds were regressed out** (a runtime argument nilearn forgets), the mask that actually resolved, the atlas region count, GLM design columns, and `cov_estimator` resolving to Ledoit-Wolf |
 | `sbi` | **the training hyperparameters sbi discards** and whether training converged or hit the epoch limit, the resolved density-estimator architecture, and the proposal each round drew from |
 | `mne` | **which ICA components were excluded** and whether ICA converged, filter *design* rather than just the band, bad channels, epoch drop counts and reasons — with subject data hashed, never stored |
@@ -302,7 +304,7 @@ with none of them installed. Every probe is best-effort: a provenance tool that
 crashes a four-hour simulation because a framework renamed an attribute has done
 far more harm than the missing field was worth.
 
-All seven are verified against live installs by `tests/test_adapters_live.py`.
+All eight are verified against live installs by `tests/test_adapters_live.py`.
 See `examples/adapter_usage.py` for the pattern for each, and
 [INSTALL.md](INSTALL.md) for which environment each needs — they do not all fit
 in one.

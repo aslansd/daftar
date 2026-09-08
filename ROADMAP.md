@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Seven adapters, all verified against live installed frameworks. Notebook and
-Colab support. 0.6.0 on PyPI, zero runtime dependencies, Apache 2.0.
+Eight adapters, all verified against live installed frameworks. Notebook and
+Colab support. 0.7.0 on PyPI, zero runtime dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -15,13 +15,14 @@ Colab support. 0.6.0 on PyPI, zero runtime dependencies, Apache 2.0.
 | MNE-Python adapter | verified live |
 | sbi adapter | verified live |
 | Nilearn adapter | verified live |
+| gdsfactory adapter | verified live |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
 tests/test_core.py            44 passed
 tests/test_notebook.py        15 passed
-tests/test_adapters_live.py   27 (skip whatever is absent)
+tests/test_adapters_live.py   32 (skip whatever is absent)
 ```
 
 The initial version is done. Everything below is about what comes next, and the
@@ -36,7 +37,7 @@ what it does not say: number of adapters. Adapter count is a vanity metric — i
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Seven adapters with zero users and fourteen adapters with zero users are the same
+Eight adapters with zero users and sixteen adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
@@ -85,7 +86,7 @@ An adapter is worth writing only if all five hold:
    eLife, SNUFA, Neuromatch and Mathematics of Neuroscience. An adapter you
    cannot distribute is a hobby.
 4. **The framework is stable enough not to rot.** Every adapter is a maintenance
-   liability against someone else's release schedule — and three of the seven
+   liability against someone else's release schedule — and three of the eight
    existing ones have already broken against a dependency.
 5. **It stays inside the envelope.** Unregulated, non-dual-use, Python, runs on
    a laptop.
@@ -145,7 +146,23 @@ it is a clever demo attached to an unused tool.
   package handles. Nilearn shipped in 0.6.0.
 - **MuJoCo, Genesis, Isaac** — robotics customers are defence-adjacent.
 - **CFD / HydroGym** — same, plus baselines needing 150,000 GPU-hours.
-- **EDA / chip design** — fails two criteria simultaneously.
+- **Digital EDA flows** — synthesis, place-and-route, and the commercial PDKs
+  that go with them. Export-controlled toolchains, foundry NDAs no small team
+  gets, and the most politically contested technology category there is.
+
+  **A distinction worth being precise about.** An earlier version of this list
+  said "EDA / chip design" without qualification, and the gdsfactory adapter in
+  0.7.0 does not contradict it. gdsfactory is an open-source Python library for
+  scripting *layout geometry*, used mostly in silicon photonics research, and it
+  ships an open generic PDK. The adapter records provenance *about* layout
+  scripts: it contains no design capability, no PDK, no foundry data and no
+  device models, in the same way the MNE adapter records provenance about an
+  analysis without containing patient data.
+
+  The line is between recording and designing, and between photonics research
+  and advanced-node digital logic. It is a real line, but it is narrower than
+  the original entry implied, and anyone relying on that entry should read it as
+  applying to digital EDA flows specifically.
 
 ---
 

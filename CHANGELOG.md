@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.7.0 — gdsfactory
+
+Photonic and analog **layout** provenance. gdsfactory is an open-source Python
+library for scripting GDSII geometry, used mostly in silicon photonics research.
+
+**The GDS file has no idea what made it.** A GDSII stream is geometry and
+nothing else — no script, no parameters, no library version. It is the artifact
+that goes to a foundry, and mask changes are expensive. The adapter records the
+content hash of the written GDS alongside everything that produced it, which is
+the only way that file stops being an orphan.
+
+**The library stack moves polygons.** Component generators are library code, so
+a default bend radius or a router heuristic changing between gdsfactory releases
+changes the mask. gdsfactory sits on kfactory sits on KLayout; all three
+versions are recorded, because the same script on two machines can produce
+different geometry and nothing in the output says so.
+
+**The PDK is the process.** gdsfactory refuses to build without an activated
+PDK, but which one and which version decides layers, cross sections and every
+device. Recorded by name, version, cell and cross-section counts, and a hash of
+the layer map.
+
+Also recorded: design settings readably rather than hashed into a cell name
+(gdsfactory derives cell names like `mzi_..._DL20_LY2_LX0p1_Bbend_054caa28`,
+which is a fingerprint but not diffable), the netlist hash so a routing change
+is distinguishable from a geometry change, port counts and names, bounding box,
+and polygon counts per layer from a flattened copy.
+
+### On scope
+
+`ROADMAP.md` has excluded chip design from the start, and this does not reverse
+that. The exclusion was about **digital EDA flows** — synthesis, place-and-route,
+export-controlled toolchains and commercial PDKs under foundry NDA. gdsfactory
+is layout-geometry scripting with an open generic PDK, and the adapter records
+provenance *about* layout scripts: it contains no design capability, no PDK, no
+foundry data and no device models, in the same way the MNE adapter records
+provenance about an analysis without containing patient data.
+
+The line is between recording and designing, and between photonics research and
+advanced-node digital logic. The roadmap entry has been rewritten to say so
+precisely rather than leaving a blanket exclusion that the code contradicts.
+
+Five live tests against real layout generation, including that identical
+parameters reproduce an identical mask hash.
+
 ## 0.6.0 — Nilearn
 
 **A correction first.** An earlier version of `ROADMAP.md` listed "Nilearn /
