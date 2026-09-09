@@ -28,7 +28,7 @@ in `test_core.py` or `test_notebook.py` skips, something is wrong.
 
 | File | Tests | Needs | What it covers |
 |---|---|---|---|
-| `tests/test_core.py` | 52 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store |
+| `tests/test_core.py` | 52 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store, **and the Concordia adapter** |
 | `tests/test_notebook.py` | 15 | `ipython` | cell hashing, session history, the `%%daftar` magic |
 | `tests/test_adapters_live.py` | 36 | the frameworks | real workloads through each adapter |
 
@@ -94,6 +94,51 @@ pytest tests/test_adapters_live.py -k at_least_report -s
 Never fails. Prints the adapter matrix, the framework versions it would be
 testing against, and a runtime usability line per framework — because "the
 adapter tests passed" only means something alongside what they passed against.
+
+---
+
+## Testing the Concordia adapter
+
+It is the one adapter tested in the core suite rather than the live suite:
+
+```bash
+pytest tests/ -k concordia -v          # 7 tests, no install required
+```
+
+The wrapper delegates to a language model by attribute lookup rather than
+subclassing `LanguageModel`, so its logic runs against a fake model with no
+`gdm-concordia` and no provider credentials. That is deliberate — an adapter
+whose tests need an API key is an adapter nobody runs the tests for.
+
+What those tests cover, and what to check if you change it:
+
+| Test | Guards |
+|---|---|
+| `records_the_trajectory_not_a_replay_promise` | the manifest states plainly that an unseeded run is not repeatable, rather than implying it is |
+| `identical_runs_have_identical_trajectories` | the chain hash is stable when nothing changed |
+| `locates_a_response_divergence` | same prompt, different answer → reported as provider non-determinism |
+| `locates_a_prompt_divergence` | different prompt → reported as upstream simulation divergence |
+| `detects_a_length_divergence` | one run made more calls than the other |
+| `wrapper_delegates_unknown_attributes` | it is not a `LanguageModel` subclass; anything unimplemented passes through |
+| `transcript_is_written_to_a_file_not_the_manifest` | a planted confidential string never reaches the manifest |
+
+The last one matters most. Prompts in agent simulations routinely contain the
+entire scenario, so the manifest gets fixed-width hashes and the full text goes
+to a file the export bundle carries. If you change what the adapter records,
+that test is the one that stops sensitive content leaking into a record meant to
+be committed to git.
+
+### Checking divergence reporting by hand
+
+```python
+from daftar.adapters import concordia as ca
+a, b = store.load(run_a), store.load(run_b)
+print(ca.render_divergence(ca.first_divergence(a, b)))
+```
+
+Against two runs of the same scenario this should either report identical
+trajectories or name the exact call at which they split. If it reports a
+divergence at call 0, the runs were never comparable in the first place.
 
 ---
 

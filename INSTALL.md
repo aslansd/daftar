@@ -34,7 +34,7 @@ frameworks do not track. As of this writing:
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
 | mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
-| gdm-concordia | needs an LLM provider to do anything real | the adapter is duck-typed, so its logic is tested without Concordia installed |
+| gdm-concordia | needs an **LLM provider and credentials** to run anything real | optional: the adapter is duck-typed and works without Concordia installed |
 | netpyne ≥ 1.0 | needs **NEURON**, which `pip install netpyne` does **not** pull, plus a C compiler for `nrnivmodl` | install `neuron` explicitly; shares Environment A |
 | gdsfactory ≥ 9 | **Python ≥ 3.12, < 3.15**; pulls KLayout | shares Environment A; the Python floor is strict |
 | nilearn ≥ 0.11 | `scikit-learn`, `nibabel`, Python ≥ 3.9 | unconstrained; shares Environment A |
@@ -47,6 +47,27 @@ a scientific Python environment, and it is a large part of why daftar records
 
 **Do not try to force all four into one environment.** Use two, and let the test
 suite skip whatever is absent in each — both suites go green.
+
+### Concordia is the exception: you may not need to install it at all
+
+The Concordia adapter wraps a language model by delegation rather than by
+subclassing `LanguageModel`, so **the adapter works without `gdm-concordia`
+installed**. If you already have a model object with `sample_text()`, you can
+wrap it:
+
+```python
+from daftar.adapters import concordia as ca
+
+model = ca.wrap(my_language_model, run)
+```
+
+You need `gdm-concordia` only to run actual Concordia simulations, and an LLM
+provider with credentials to run them against anything real. `daftar doctor`
+reports `concordia` as `not installed` in that case, which is accurate and does
+not stop the adapter working.
+
+This is also why its seven tests live in `tests/test_core.py` rather than the
+live adapter suite: the divergence logic is pure and runs against a fake model.
 
 ### Environment A — brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne (Python 3.12)
 
@@ -76,6 +97,7 @@ python 3.12.14 on Darwin arm64
   jaxley      ok
   meltingpot  -       not installed
   mne         ok
+  concordia   -       not installed   (optional; see above)
   gdsfactory  ok
   netpyne     ok
   nilearn     ok
@@ -124,7 +146,7 @@ pip install "daftar[sbi]"
 pip install "daftar[nilearn]"
 pip install "daftar[gdsfactory]"
 pip install "daftar[netpyne]"
-pip install "daftar[concordia]"
+pip install "daftar[concordia]"   # only for running Concordia itself
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython
