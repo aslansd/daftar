@@ -308,24 +308,36 @@ with daftar.track("commons-harvest", seed=1234) as run:
 '''
 
 # ------------------------------------------------------------- Concordia ---
-CONCORDIA_NOTE = '''
-Concordia is deliberately not an adapter in v0.1.
+CONCORDIA = '''
+import daftar
+from daftar.adapters import concordia as ca
 
-Every agent step calls LanguageModel.sample_text(). No major provider
-guarantees token-level determinism even with a fixed seed, so `replay` cannot
-mean what it means everywhere else in this package. Shipping an adapter whose
-replay silently does not replay would undermine the one property the tool is
-selling.
+with daftar.track("village-scenario", seed=42) as run:
+    model = ca.wrap(real_language_model, run)   # drop-in; delegates everything
+    ...                                          # build and run the simulation
+    ca.finish(model, run, transcript_path="transcript.json")
 
-The right design, for a later release, is a different contract: wrap the
-LanguageModel, record a hash of every (prompt, response) pair in order, and
-have `diff` report transcript divergence -- the first step at which two runs
-took different paths -- rather than claiming reproducibility. That turns
-Concordia from an awkward fit into the strongest demonstration of why the
-provenance layer matters at all: LLM-driven simulation is the case where nobody
-can currently audit anything.
+# Comparing two runs:
+a, b = store.load(run_a), store.load(run_b)
+print(ca.render_divergence(ca.first_divergence(a, b)))
 
-Build it after the deterministic adapters have users.
+# Recorded automatically:
+#   result.llm.n_calls, .trajectory_sha256
+#   result.llm.prompt_hashes, .response_hashes   <- the ordered chain
+#   param.llm.model_name, .temperatures, .seeds_passed
+#   param.llm.determinism    <- states plainly that the run is not repeatable
+#
+# This adapter has a DIFFERENT CONTRACT from the others. It does not claim
+# reproducibility, because no provider guarantees token-level determinism. It
+# claims auditability: which call did two runs diverge at, and was it because
+# the model was asked a different question (simulation state already diverged --
+# look upstream) or gave a different answer to the same one (provider
+# non-determinism -- no code change removes it)?
+#
+# A generic diff can only say "nondeterministic". This says which call and why.
+#
+# Transcripts are hashed, not stored: prompts routinely contain the entire
+# scenario. transcript_path writes the full text to a file the bundle carries.
 '''
 
 
@@ -344,7 +356,6 @@ def main():
         ("MeltingPot", MELTINGPOT),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
-    print(f"\n{'-' * 70}\nConcordia -- why it is not here yet\n{'-' * 70}{CONCORDIA_NOTE}")
 
 
 if __name__ == "__main__":
