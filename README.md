@@ -279,6 +279,7 @@ knowing something a generic tracker cannot infer.
 | `cpm` | parameter **bounds and priors** (resolved to the scipy distribution and its arguments), estimator and its scipy settings, restart counts and the initial guesses themselves, per-participant convergence, cohort hash |
 | `brian2` | **the integration method Brian2 actually chose** — its default is a candidate list and the winner is stored nowhere — plus resolved `codegen.target`, network schedule, equation hashes, realised synapse counts |
 | `gdsfactory` | **the content hash of the written GDS** — the mask a foundry receives, which carries no record of what made it — plus the active PDK and its layer map, the library stack that moves polygons between versions, and the design settings |
+| `concordia` | **the first step at which two LLM-driven runs diverged**, and whether the model was asked a different question or gave a different answer to the same one; trajectory hash, sampling settings, and whether any seed was passed at all |
 | `netpyne` | **whether the compiled NEURON mechanism library is stale** — a `.mod` edit without `nrnivmodl` silently runs the old binary — plus NetPyNE's four RNG seeds, `hParams`, the realised connection count, and per-section model hashes |
 | `nilearn` | **which confounds were regressed out** (a runtime argument nilearn forgets), the mask that actually resolved, the atlas region count, GLM design columns, and `cov_estimator` resolving to Ledoit-Wolf |
 | `sbi` | **the training hyperparameters sbi discards** and whether training converged or hit the epoch limit, the resolved density-estimator architecture, and the proposal each round drew from |
@@ -305,25 +306,42 @@ with none of them installed. Every probe is best-effort: a provenance tool that
 crashes a four-hour simulation because a framework renamed an attribute has done
 far more harm than the missing field was worth.
 
-All nine are verified against live installs by `tests/test_adapters_live.py`.
+All ten are covered by the test suite; nine are verified against live installs by `tests/test_adapters_live.py`.
 See `examples/adapter_usage.py` for the pattern for each, and
 [INSTALL.md](INSTALL.md) for which environment each needs — they do not all fit
 in one.
 
-### Why not Concordia
+### Concordia works differently, on purpose
 
 Every Concordia agent step calls `LanguageModel.sample_text()`, and no major
-provider guarantees token-level determinism even with a fixed seed. `replay`
-there cannot mean what it means everywhere else, and shipping an adapter whose
-replay silently does not replay would undermine the one property this package
-sells.
+provider guarantees token-level determinism even with a fixed seed. So the
+Concordia adapter **does not claim reproducibility**. Claiming it would
+undermine the one property this package sells.
 
-The right design is a different contract — wrap the model, hash every
-`(prompt, response)` pair in order, and have `diff` report the first step at
-which two runs diverged. That turns Concordia into the strongest argument for
-this whole package rather than an awkward fit, because LLM-driven simulation is
-the case where nobody can currently audit anything. It comes after the
-deterministic adapters have users.
+It claims auditability instead: it wraps the model, hashes every
+`(prompt, response)` pair in call order, and tells you the first step at which
+two runs diverged — and, crucially, *which kind* of divergence it was:
+
+```
+Diverged at call 3: the model was asked the SAME question (7bfccda2)
+and gave a different answer (281085d3 vs efb55af2).
+This is provider non-determinism. No change to your code removes it.
+```
+
+versus:
+
+```
+Diverged at call 3: the model was asked a DIFFERENT question (7bfccda2 vs 91ae03f1).
+The simulation state had already diverged before this call -- look upstream at
+agent memory, ordering, or an earlier response.
+```
+
+Those two have completely different remedies, and nothing else distinguishes
+them. A generic diff can only say "nondeterministic".
+
+Transcripts are hashed, not stored: prompts in agent simulations routinely
+contain the whole scenario. `finish(..., transcript_path=...)` writes the full
+text to a file the export bundle carries.
 
 ---
 

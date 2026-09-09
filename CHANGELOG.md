@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.9.0 — Concordia
+
+The adapter this project has deferred since the beginning, built on the contract
+promised at the time rather than a pretend version of the usual one.
+
+**It does not claim reproducibility.** Every Concordia agent step calls
+`LanguageModel.sample_text()`, and no major provider guarantees token-level
+determinism even with a fixed seed — temperature, batching, load-balanced
+serving and silent model updates all break it. Shipping an adapter whose
+`replay` silently did not replay would undermine the one property this package
+sells.
+
+**It claims auditability instead.** It wraps the model, hashes every
+`(prompt, response)` pair in call order, and reports the first step at which two
+runs diverged — distinguishing the two cases that matter:
+
+```
+Diverged at call 3: the model was asked the SAME question (7bfccda2)
+and gave a different answer (281085d3 vs efb55af2).
+This is provider non-determinism. No change to your code removes it.
+```
+
+versus a *prompt* divergence, which means the simulation state had already
+diverged before the model was called, and the cause is upstream in agent memory
+or ordering. Those have completely different remedies. A generic diff can only
+say `nondeterministic`; this says which call, and why.
+
+**The wrapper is duck-typed, not a `LanguageModel` subclass.** Subclassing would
+mean tracking Concordia's abstract interface as it changes and breaking whenever
+a method is added. Delegating by attribute lookup means anything unimplemented
+passes straight through — and it also means the adapter's logic is testable
+without Concordia installed, which is where its seven tests live.
+
+**Transcripts are hashed, not stored.** Prompts in agent simulations routinely
+contain the entire scenario. The manifest gets fixed-width hashes;
+`finish(..., transcript_path=...)` writes the full text to a file that the
+export bundle carries and `add_output` hashes. There is a test asserting a
+planted confidential string never reaches the manifest.
+
+Also recorded: sampling temperatures with a flag when Concordia's default of
+1.0 was left in place, and `param.llm.determinism` stating in plain language
+that a run with no seed is not repeatable even in principle.
+
+### On the gate
+
+`ROADMAP.md` said to build this "after the deterministic adapters have users".
+The deterministic set is complete; the users are not there. The adapter was
+built anyway, and the roadmap now records that gate as **skipped, not passed**.
+
 ## 0.8.1
 
 **Fixed: a package whose *dependency* is missing was reported as missing itself.**

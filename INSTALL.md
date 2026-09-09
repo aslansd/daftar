@@ -23,7 +23,7 @@ daftar doctor
 Here the honest answer is more complicated than a single command, and it is
 worth understanding why before you start.
 
-**The nine target frameworks cannot currently share one environment.** Each pins
+**The ten target frameworks cannot currently share one environment.** Each pins
 its dependencies loosely, and their dependencies remove APIs on schedules the
 frameworks do not track. As of this writing:
 
@@ -34,6 +34,7 @@ frameworks do not track. As of this writing:
 | dm-meltingpot | needs **dmlab2d**, narrow wheel coverage | weakest on macOS arm64; often needs Python 3.11 or a source build |
 | jaxley ≥ 0.14 | fine on current JAX | 0.13.0 was broken; upgrade rather than pin |
 | mne ≥ 1.12 | `scipy >= 1.13`, Python ≥ 3.10 | compatible with cpm's `scipy<1.18` pin, so they share an environment |
+| gdm-concordia | needs an LLM provider to do anything real | the adapter is duck-typed, so its logic is tested without Concordia installed |
 | netpyne ≥ 1.0 | needs **NEURON**, which `pip install netpyne` does **not** pull, plus a C compiler for `nrnivmodl` | install `neuron` explicitly; shares Environment A |
 | gdsfactory ≥ 9 | **Python ≥ 3.12, < 3.15**; pulls KLayout | shares Environment A; the Python floor is strict |
 | nilearn ≥ 0.11 | `scikit-learn`, `nibabel`, Python ≥ 3.9 | unconstrained; shares Environment A |
@@ -123,6 +124,7 @@ pip install "daftar[sbi]"
 pip install "daftar[nilearn]"
 pip install "daftar[gdsfactory]"
 pip install "daftar[netpyne]"
+pip install "daftar[concordia]"
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython

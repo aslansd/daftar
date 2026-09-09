@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Nine adapters, all verified against live installed frameworks. Notebook and
-Colab support. 0.8.0 on PyPI, zero runtime dependencies, Apache 2.0.
+Ten adapters. Notebook and Colab support. 0.9.0 on PyPI, zero runtime
+dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -17,11 +17,12 @@ Colab support. 0.8.0 on PyPI, zero runtime dependencies, Apache 2.0.
 | Nilearn adapter | verified live |
 | gdsfactory adapter | verified live |
 | NetPyNE / NEURON adapter | verified live |
+| Concordia adapter | shipped (different contract — see below) |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
-tests/test_core.py            44 passed
+tests/test_core.py            52 passed
 tests/test_notebook.py        15 passed
 tests/test_adapters_live.py   36 (skip whatever is absent)
 ```
@@ -38,7 +39,7 @@ what it does not say: number of adapters. Adapter count is a vanity metric — i
 is legible, it feels like progress, and it is almost entirely decoupled from
 whether anyone uses the thing.
 
-Nine adapters with zero users and eighteen adapters with zero users are the same
+Ten adapters with zero users and twenty adapters with zero users are the same
 outcome. One adapter with fifteen users who would complain if it disappeared is
 a different category of thing.
 
@@ -117,15 +118,18 @@ native adapter and much cheaper to build.
 
 ### Tier 3
 
-**2. Concordia** — the strategic one, and the reason to do it last.
+**Shipped in 0.9.0, on a different contract.** The condition set here was
+"after the deterministic adapters have users", and that condition has *not* been
+met — there are still no external users. The adapter was built anyway because
+the deterministic set is complete and it is the strongest demonstration of the
+thesis, but the gate is worth recording as skipped rather than passed.
 
-Every agent step calls `LanguageModel.sample_text()`, so `replay` cannot mean
-what it means elsewhere. The right contract is different: wrap the model, hash
-every `(prompt, response)` pair in order, and have `diff` report the first step
-at which two runs diverged. That makes Concordia the strongest demonstration of
-the whole thesis — LLM-driven simulation is the case where nobody can currently
-audit anything — but it needs the deterministic adapters to have users first, or
-it is a clever demo attached to an unused tool.
+It does not claim reproducibility. It wraps the language model, hashes every
+`(prompt, response)` pair in call order, and reports the first step at which two
+runs diverged — distinguishing "asked a different question" (the simulation
+state had already diverged) from "same question, different answer" (provider
+non-determinism). Those have different remedies and nothing else tells them
+apart.
 
 ### Not on the list
 

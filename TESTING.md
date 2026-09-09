@@ -11,11 +11,14 @@ What you should see depends on which frameworks are installed:
 
 | Environment | Result |
 |---|---|
-| daftar only | **60 passed, 35 skipped** — the core and notebook suites, plus the adapter status report which always runs |
-| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **93 passed, 2 skipped** — only MeltingPot missing |
-| Environment B (meltingpot) | **62 passed, 33 skipped** |
+| daftar only | **68 passed, 35 skipped** — the core and notebook suites, plus the adapter status report which always runs |
+| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **101 passed, 2 skipped** — only MeltingPot missing |
+| Environment B (meltingpot) | **70 passed, 33 skipped** |
 
-**The core and notebook suites must always pass — 59 tests, no exceptions.**
+**The core and notebook suites must always pass — 67 tests, no exceptions.**
+The Concordia adapter is tested here rather than in the live suite: its wrapper
+is duck-typed, so its divergence logic runs against a fake model and needs no
+provider and no Concordia install.
 Every skip should be a live adapter test whose framework is absent. If anything
 in `test_core.py` or `test_notebook.py` skips, something is wrong.
 
@@ -25,7 +28,7 @@ in `test_core.py` or `test_notebook.py` skips, something is wrong.
 
 | File | Tests | Needs | What it covers |
 |---|---|---|---|
-| `tests/test_core.py` | 44 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store |
+| `tests/test_core.py` | 52 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store |
 | `tests/test_notebook.py` | 15 | `ipython` | cell hashing, session history, the `%%daftar` magic |
 | `tests/test_adapters_live.py` | 36 | the frameworks | real workloads through each adapter |
 
