@@ -430,7 +430,7 @@ def test_manifests_are_valid_json_on_disk(store):
 
 def test_adapters_import_without_their_frameworks():
     from daftar import adapters
-    assert set(adapters.registry.all()) == {"jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory", "netpyne"}
+    assert set(adapters.registry.all()) == {"jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory", "netpyne", "concordia"}
     for name in adapters.registry.all():
         assert isinstance(adapters.get(name).is_available(), bool)
 
@@ -799,3 +799,171 @@ def test_probe_distinguishes_missing_package_from_missing_dependency(store):
 
     # And something that actually imports.
     assert probe_import("json")[0] == AVAILABLE
+
+
+# --------------------------------------------------------------------------
+# Concordia: transcript recording and divergence detection
+# --------------------------------------------------------------------------
+
+class _FakeLanguageModel:
+    """A stand-in for a Concordia LanguageModel.
+
+    `responses` is a list of replies handed out in order, so a test can make a
+    model behave deterministically or not, without any provider.
+    """
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.model_name = "fake-llm-v1"
+        self.calls = 0
+
+    def sample_text(self, prompt, **kwargs):
+        out = self.responses[self.calls % len(self.responses)]
+        self.calls += 1
+        return out
+
+    def sample_choice(self, prompt, responses, **kwargs):
+        self.calls += 1
+        return 0, responses[0], {"fake": True}
+
+
+def _run_fake_scenario(store, responses, prompts=None, label="scenario",
+                       **wrap_kwargs):
+    from daftar.adapters import concordia as ca
+
+    prompts = prompts or ["step 0", "step 1", "step 2"]
+    with daftar.track(label, seed=1, store=store) as run:
+        model = ca.wrap(_FakeLanguageModel(responses), run, **wrap_kwargs)
+        for p in prompts:
+            model.sample_text(p)
+        ca.finish(model, run)
+        return run.run_id, model
+
+
+def test_concordia_records_the_trajectory_not_a_replay_promise(store):
+    """The contract is auditability, not reproducibility -- and it says so."""
+    from daftar.adapters import concordia as ca
+
+    rid, model = _run_fake_scenario(store, ["a", "b", "c"])
+    m = store.load(rid)
+
+    assert m.get("result.llm.n_calls") == "3"
+    assert len(m.get("result.llm.trajectory_sha256")) == 16
+    assert m.get("param.llm.model") == "_FakeLanguageModel"
+    assert m.get("param.llm.model_name") == "fake-llm-v1"
+    assert m.get("result.llm.n_sample_text") == "3"
+
+    # No seed was passed, and the manifest states plainly that the run cannot
+    # be repeated even in principle rather than implying it can.
+    assert m.get("param.llm.seeds_passed") == "false"
+    assert "not repeatable even in principle" in m.get("param.llm.determinism")
+
+    # Concordia's default temperature is 1.0 and is rarely a deliberate choice.
+    assert m.get("param.llm.temperature_was_default") == "true"
+    assert ca.first_divergence(m, m)["diverged"] is False
+
+
+def test_concordia_identical_runs_have_identical_trajectories(store):
+    from daftar.adapters import concordia as ca
+
+    a, _ = _run_fake_scenario(store, ["a", "b", "c"])
+    b, _ = _run_fake_scenario(store, ["a", "b", "c"])
+    ma, mb = store.load(a), store.load(b)
+
+    assert ma.get("result.llm.trajectory_sha256") == \
+           mb.get("result.llm.trajectory_sha256")
+
+    result = ca.first_divergence(ma, mb)
+    assert result["diverged"] is False
+    assert result["n_calls"] == 3
+    assert "Identical trajectories" in ca.render_divergence(result)
+
+
+def test_concordia_locates_a_response_divergence(store):
+    """Same question, different answer: provider non-determinism."""
+    from daftar.adapters import concordia as ca
+
+    a, _ = _run_fake_scenario(store, ["a", "b", "c"])
+    b, _ = _run_fake_scenario(store, ["a", "DIFFERENT", "c"])
+
+    result = ca.first_divergence(store.load(a), store.load(b))
+    assert result["diverged"] is True
+    assert result["step"] == 1
+    assert result["kind"] == "response"
+
+    text = ca.render_divergence(result)
+    assert "SAME question" in text
+    assert "provider non-determinism" in text
+
+
+def test_concordia_locates_a_prompt_divergence(store):
+    """Different question: the simulation state had already diverged."""
+    from daftar.adapters import concordia as ca
+
+    a, _ = _run_fake_scenario(store, ["a", "b", "c"],
+                              prompts=["step 0", "step 1", "step 2"])
+    b, _ = _run_fake_scenario(store, ["a", "b", "c"],
+                              prompts=["step 0", "step 1 CHANGED", "step 2"])
+
+    result = ca.first_divergence(store.load(a), store.load(b))
+    assert result["diverged"] is True
+    assert result["step"] == 1
+    assert result["kind"] == "prompt"
+
+    text = ca.render_divergence(result)
+    assert "DIFFERENT question" in text
+    assert "look upstream" in text
+
+
+def test_concordia_detects_a_length_divergence(store):
+    """One run made more calls than the other."""
+    from daftar.adapters import concordia as ca
+
+    a, _ = _run_fake_scenario(store, ["a", "b", "c"],
+                              prompts=["s0", "s1", "s2"])
+    b, _ = _run_fake_scenario(store, ["a", "b", "c"], prompts=["s0", "s1"])
+
+    result = ca.first_divergence(store.load(a), store.load(b))
+    assert result["diverged"] is True
+    assert result["kind"] == "length"
+    assert {result["n_calls_a"], result["n_calls_b"]} == {3, 2}
+
+
+def test_concordia_wrapper_delegates_unknown_attributes(store):
+    """It is not a LanguageModel subclass; anything unimplemented passes through."""
+    from daftar.adapters import concordia as ca
+
+    with daftar.track("delegate", store=store) as run:
+        fake = _FakeLanguageModel(["x"])
+        model = ca.wrap(fake, run)
+        assert model.model_name == "fake-llm-v1"      # attribute passthrough
+        idx, response, info = model.sample_choice("pick", ["one", "two"])
+        assert (idx, response) == (0, "one")
+        ca.finish(model, run)
+        rid = run.run_id
+
+    assert store.load(rid).get("result.llm.n_sample_choice") == "1"
+
+
+def test_concordia_transcript_is_written_to_a_file_not_the_manifest(store, tmp_path):
+    """Prompts contain the whole scenario; hashes go in the manifest, text in a file."""
+    import json
+
+    from daftar.adapters import concordia as ca
+
+    secret = "CONFIDENTIAL SCENARIO TEXT"
+    out = tmp_path / "transcript.json"
+
+    with daftar.track("transcript", store=store) as run:
+        model = ca.wrap(_FakeLanguageModel(["reply"]), run)
+        model.sample_text(secret)
+        ca.finish(model, run, transcript_path=out)
+        rid = run.run_id
+
+    m = store.load(rid)
+    # The content is not in the manifest.
+    assert secret not in m.to_json()
+    # But the file has it, and is registered as a tracked output.
+    data = json.loads(out.read_text())
+    assert data["calls"][0]["prompt"] == secret
+    assert m.get("output.transcript.json.sha256")
