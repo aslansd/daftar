@@ -11,11 +11,11 @@ What you should see depends on which frameworks are installed:
 
 | Environment | Result |
 |---|---|
-| daftar only | **68 passed, 35 skipped** — the core and notebook suites, plus the adapter status report which always runs |
-| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **101 passed, 2 skipped** — only MeltingPot missing |
-| Environment B (meltingpot) | **70 passed, 33 skipped** |
+| daftar only | **85 passed, 35 skipped** — the core and notebook suites, plus the adapter status report which always runs |
+| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **118 passed, 2 skipped** — only MeltingPot missing |
+| Environment B (meltingpot) | **87 passed, 33 skipped** |
 
-**The core and notebook suites must always pass — 67 tests, no exceptions.**
+**The core, notebook and feature suites must always pass — 84 tests, no exceptions.**
 The Concordia adapter is tested here rather than in the live suite: its wrapper
 is duck-typed, so its divergence logic runs against a fake model and needs no
 provider and no Concordia install.
@@ -31,6 +31,7 @@ in `test_core.py` or `test_notebook.py` skips, something is wrong.
 | `tests/test_core.py` | 52 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store, **and the Concordia adapter** |
 | `tests/test_notebook.py` | 15 | `ipython` | cell hashing, session history, the `%%daftar` magic |
 | `tests/test_adapters_live.py` | 36 | the frameworks | real workloads through each adapter |
+| `tests/test_features.py` | 17 | nothing | the pytest plugin, notebook staleness detection, the run browser |
 
 The core and notebook suites must always pass. They have no optional
 dependencies beyond IPython and they are fast.
@@ -139,6 +140,49 @@ print(ca.render_divergence(ca.first_divergence(a, b)))
 Against two runs of the same scenario this should either report identical
 trajectories or name the exact call at which they split. If it reports a
 divergence at call 0, the runs were never comparable in the first place.
+
+---
+
+## Using daftar in your own test suite
+
+The plugin is installed with daftar — no separate package:
+
+```python
+def test_my_simulation(daftar_run):
+    daftar_run.log_param("dt", 0.025)
+    daftar_run.log_result("mean", 4.81)
+```
+
+```bash
+pytest                                  # record a run per test
+pytest --daftar-compare                 # fail if result.* moved
+pytest --daftar-update                  # accept new numbers as baseline
+pytest --daftar-dir /path/to/store      # somewhere other than ./.daftar
+pytest --daftar-seed 42                 # seed every tracked test run
+```
+
+Per-test overrides use the marker:
+
+```python
+@pytest.mark.daftar(label="my-sim", seed=42)
+def test_simulation(daftar_run):
+    ...
+```
+
+### The properties worth preserving
+
+`tests/test_features.py` pins three behaviours that were each got wrong once:
+
+1. **A regression is a test failure, not a teardown error.** Finalising the run
+   in fixture teardown produced `1 passed, 1 error`, which reads as a broken
+   fixture rather than a result that moved. The run is closed during the call
+   phase instead.
+2. **A rejected run does not become the next baseline.** Otherwise the check
+   fires once, the changed value becomes the reference, and it goes quiet — worse
+   than not having it, because you would believe it was watching.
+3. **Only `result.*` fields fail the check.** A changed environment is
+   information, not a failure; flagging it would make the check unusable on any
+   machine that ever upgrades anything.
 
 ---
 

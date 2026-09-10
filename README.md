@@ -138,6 +138,7 @@ daftar diff r-4f21ab r-88c07e  # what changed, and whether it mattered
 daftar vary -l my-sweep        # which fields differ across many runs
 daftar replay r-4f21ab         # what it would take to reproduce this
 daftar export r-4f21ab -o run.zip
+daftar browse --open           # a local HTML view over the whole store
 daftar doctor                  # which adapters work here, and why not
 ```
 
@@ -183,6 +184,67 @@ point 3 of 40 keeps the first two results.
 
 ---
 
+## In a test suite
+
+daftar ships a pytest plugin. The `daftar_run` fixture records a run per test,
+labelled with the node id:
+
+```python
+def test_my_simulation(daftar_run):
+    result = simulate(dt=0.025)
+    daftar_run.log_param("dt", 0.025)
+    daftar_run.log_result("mean", float(result.mean()))
+```
+
+```bash
+pytest                      # records a run per test
+pytest --daftar-compare     # also fails if results moved
+pytest --daftar-update      # accept the new numbers as the baseline
+```
+
+`--daftar-compare` fails a test when its `result.*` fields differ from the last
+accepted run of that test:
+
+```
+daftar: results changed for test_sim.py::test_simulation
+  baseline run: r-9d527a66 (2026-09-10T11:36:19)
+
+  result.total  123.75  ->  127.4625
+
+  The assertions in this test passed; the numbers moved anyway.
+```
+
+That is a different kind of test from the usual sort. A unit test says "this
+function returns 4". This says "this simulation returns whatever it returned
+last time, and if that changed, something in the code or the environment
+changed and you should find out which". It catches the failure this whole
+package exists for: a dependency upgrade that quietly moves a result while
+every assertion still passes.
+
+A run that fails the comparison does **not** become the next baseline. Otherwise
+the check would fire once and then go quiet, which is worse than not having it —
+you would believe it was watching. The baseline moves only on
+`--daftar-update`. Only `result.*` fields fail the check; a changed environment
+is information, not a failure.
+
+---
+
+## A run browser
+
+```bash
+daftar browse --open
+```
+
+Writes a **single self-contained HTML file** — no server, no network, no
+dependencies — with filtering, sorting, and click-two-runs-to-diff using the
+same cause/effect split as the `diff` command.
+
+Self-contained matters: the file keeps working when emailed to a collaborator,
+attached to a paper, or opened in five years on a machine that has never heard
+of daftar. That is the same property the manifest format has.
+
+---
+
 ## Notebooks and Colab
 
 Notebooks are the hardest case: the git commit means little when cells ran in an
@@ -196,6 +258,7 @@ changes — and adds two fields:
 |---|---|
 | `code.cell_sha256` | The cell source, hashed **before** execution, so it survives the cell being edited afterwards |
 | `code.session_history_sha256` | Every cell executed before this one. A notebook result depends on the whole session, and nothing else records that |
+| `code.session_redefined` | Names bound by more than one *distinct* cell body this session — a cell you edited and re-ran |
 
 That second field is the one that matters. Run the same cell twice with a
 different upstream variable and daftar reports:
@@ -212,6 +275,19 @@ observed effects (2)
 
 Without it, that pair would diff as `nondeterministic` — wrong, and it would
 send you looking for a seeding bug that does not exist.
+
+**Cells edited and re-run** are the other common way a notebook result goes
+stale: you change a cell, re-run it, and everything downstream that used the old
+definition is now inconsistent with everything that used the new one. The
+notebook on disk shows only the final text. daftar parses each executed cell for
+the names it binds and flags any bound by more than one distinct body:
+
+```
+code.session_redefined     [simulate]
+code.session_stale_risk    true
+```
+
+Re-running a cell *unchanged* is normal and is not flagged.
 
 There is also a cell magic, which additionally stores the cell body verbatim so
 the exported bundle contains the code that actually ran:

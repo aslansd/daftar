@@ -2,8 +2,8 @@
 
 ## Where this stands
 
-Ten adapters. Notebook and Colab support. 0.9.0 on PyPI, zero runtime
-dependencies, Apache 2.0.
+Ten adapters. Notebook and Colab support, a pytest plugin, and a run browser.
+1.0.0 on PyPI, zero runtime dependencies, Apache 2.0.
 
 | | Status |
 |---|---|
@@ -18,11 +18,15 @@ dependencies, Apache 2.0.
 | gdsfactory adapter | verified live |
 | NetPyNE / NEURON adapter | verified live |
 | Concordia adapter | shipped (different contract — see below) |
+| pytest plugin | shipped |
+| Notebook staleness detection | shipped |
+| Run browser | shipped |
 | Notebook / Colab (`%%daftar`, cell + session hashing) | shipped |
 | `daftar doctor` | shipped |
 
 ```
 tests/test_core.py            52 passed
+tests/test_features.py        17 passed
 tests/test_notebook.py        15 passed
 tests/test_adapters_live.py   36 (skip whatever is absent)
 ```
@@ -168,17 +172,42 @@ apart.
 
 ---
 
-## Non-adapter work worth more than an eighth adapter
+## Non-adapter work — done
 
-**A pytest plugin.** Runs inside a test suite tracked automatically. Small, and
-it makes daftar useful in CI as a regression check on your own results, which
-`diff`'s exit code already supports.
+All three items that were listed here shipped in 1.0.0:
 
-**Richer notebook capture.** The current implementation hashes the executed cell
-and the session history, which is the hard part. Detecting that a cell has been
-*modified since it last ran* would be a natural extension and would catch the
-single most common way a notebook result becomes unreproducible.
+**The pytest plugin.** `daftar_run` records a run per test; `--daftar-compare`
+fails a test when its results move even though its assertions pass. A rejected
+run does not become the next baseline, so the check cannot fire once and go
+quiet.
 
-**A run browser.** `daftar list` and `daftar vary` are adequate for tens of runs
-and poor for hundreds. A small local HTML view over the manifest store would
-cost little and is the obvious first paid feature.
+**Notebook staleness detection.** Cells edited and re-run within a session are
+detected by parsing each executed cell for the names it binds and flagging any
+name bound by more than one distinct body. Re-running a cell unchanged is not
+flagged.
+
+**The run browser.** `daftar browse` writes one self-contained HTML file with
+filtering, sorting and click-two-runs-to-diff, using the same cause/effect split
+as the CLI. No server, no network, no dependencies.
+
+---
+
+## What is actually left
+
+Nothing on the build list. The remaining work is not technical:
+
+1. **Use it on your own work for a month.** Still the open month-7 milestone,
+   and still the only real test of whether the API is unobtrusive enough that
+   you keep using it when nobody is watching.
+2. **Send the cpm upstream issue.** A live bug affecting every cpm user who
+   upgrades SciPy, with a few-line fix. The warmest possible opening with a
+   maintainer.
+3. **Do the thirty discovery interviews.** Never happened. Without them you are
+   guessing which sentence makes a researcher lean forward — in your one good
+   shot at each community.
+4. **Submit to pyOpenSci.** Review before the software paper, since feedback
+   often changes the API, and accepted packages are fast-tracked into JOSS.
+
+Ten adapters, a plugin, and a browser do not change the position: there are
+still no external users. Nothing further gets built until that changes.
+

@@ -1,5 +1,73 @@
 # Changelog
 
+## 1.0.0 — pytest plugin, notebook staleness, run browser
+
+The three non-adapter items from the roadmap, and the end of the build list.
+
+### pytest plugin
+
+A `daftar_run` fixture records a run per test, labelled with the node id. With
+`--daftar-compare`, a test **fails when its results move** even though its
+assertions pass:
+
+```
+daftar: results changed for test_sim.py::test_simulation
+  baseline run: r-9d527a66
+
+  result.total  123.75  ->  127.4625
+
+  The assertions in this test passed; the numbers moved anyway.
+```
+
+That is a different kind of test from the usual sort, and it catches the failure
+this package exists for: a dependency upgrade that quietly moves a result while
+every assertion still passes.
+
+Three properties, each of which was got wrong first and is now pinned by a test:
+
+* **A regression is a test failure, not a teardown error.** Finalising in
+  fixture teardown produced `1 passed, 1 error`, which reads as a broken fixture
+  rather than a changed result. The run is closed during the call phase.
+* **A rejected run does not become the next baseline.** Otherwise the check
+  fires once, the changed value becomes the reference, and it goes silent — worse
+  than absent, because you would believe it was watching. The baseline moves
+  only on `--daftar-update`.
+* **Only `result.*` fields fail the check.** A changed environment is
+  information, not a failure.
+
+### Notebook staleness detection
+
+`code.session_redefined` lists names bound by more than one *distinct* cell body
+in a session — a cell you edited and re-ran. That is the other common way a
+notebook result goes stale, and the notebook on disk shows only the final text.
+Cell identity is not something Jupyter records, so daftar parses each executed
+cell for the names it binds and uses those as a proxy. Re-running a cell
+unchanged is not flagged.
+
+### Run browser
+
+`daftar browse` writes a **single self-contained HTML file** — no server, no
+network, no dependencies — with filtering, sorting and click-two-runs-to-diff
+using the same cause/effect split as the CLI. It keeps working when emailed,
+attached to a paper, or opened years later on a machine that has never heard of
+daftar, which is the same property the manifest format has.
+
+### Fixed: timestamps had second resolution
+
+`meta.started_at` used `timespec="seconds"`, so two runs started within the same
+second carried identical timestamps and "the most recent run" was whatever the
+sort happened to return. Invisible until something depended on the ordering —
+the regression check compares against the previous run of a test, and a suite
+runs many tests per second. Now microseconds, with `run_id` as a tie-break in
+`RunStore.list()`.
+
+### Why 1.0.0
+
+Not because the work is finished, but because the build list is. Ten adapters,
+notebook support, a plugin and a browser, with a stable manifest format and 114
+tests. What remains is not technical: no external users, no interviews done, no
+upstream issues sent. Those are in `ROADMAP.md` and none of them is code.
+
 ## 0.9.0 — Concordia
 
 The adapter this project has deferred since the beginning, built on the contract

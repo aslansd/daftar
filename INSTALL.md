@@ -154,6 +154,31 @@ pip install "daftar[dev]"        # pytest, numpy, ipython
 
 ---
 
+## The pytest plugin
+
+Installed automatically with daftar via an entry point — there is no separate
+`pytest-daftar` package. It activates when a test requests the `daftar_run`
+fixture, and does nothing otherwise.
+
+```bash
+pip install daftar          # the plugin comes with it
+pytest --daftar-compare     # options appear under `pytest --help`
+```
+
+Needs pytest 8 or newer. The plugin uses a new-style hook wrapper so that a
+result regression can be raised as a test failure; older pytest warns about
+exceptions from wrapper teardown.
+
+## The run browser
+
+No install and no dependency. `daftar browse` writes one self-contained HTML
+file that opens in any browser:
+
+```bash
+daftar browse --open
+daftar browse -o runs.html -l my-experiment -n 200
+```
+
 ## For development
 
 ```bash

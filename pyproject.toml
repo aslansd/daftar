@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "daftar"
-version = "0.9.0"
+version = "1.0.0"
 description = "Record what produced each computational result: environment, code, parameters, seeds, inputs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,12 +36,15 @@ nilearn = ["nilearn"]
 gdsfactory = ["gdsfactory"]
 netpyne = ["netpyne", "neuron", "gdm-concordia"]
 concordia = ["gdm-concordia"]
-dev = ["pytest>=7", "numpy", "ipython"]
+dev = ["pytest>=8", "numpy", "ipython"]
 notebook = ["ipython"]
 all = ["jaxley", "cpm-toolbox", "dm-meltingpot", "brian2", "mne", "scikit-learn", "sbi", "nilearn", "gdsfactory", "netpyne", "neuron", "gdm-concordia"]
 
 [project.scripts]
 daftar = "daftar.cli:main"
+
+[project.entry-points.pytest11]
+daftar = "daftar.pytest_plugin"
 
 [tool.setuptools.packages.find]
 where = ["src"]
