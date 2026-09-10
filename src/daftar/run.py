@@ -33,7 +33,15 @@ def _new_run_id() -> str:
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    """Microsecond resolution, deliberately.
+
+    Second resolution meant two runs started within the same second carried
+    identical ``meta.started_at``, so "the most recent run" was whatever the
+    sort happened to return. That is invisible until something depends on the
+    ordering -- the pytest regression check compares against the previous run
+    of a test, and a suite runs many tests per second.
+    """
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _package_dir() -> str:

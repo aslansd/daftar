@@ -175,7 +175,9 @@ class RunStore:
         items = list(self.iter_manifests())
         if label:
             items = [m for m in items if m.label == label]
-        items.sort(key=lambda m: m.started_at, reverse=True)
+        # run_id breaks ties. Timestamps are microsecond-resolution now, but a
+        # deterministic order matters more than the tie-break being meaningful.
+        items.sort(key=lambda m: (m.started_at, m.run_id), reverse=True)
         return items[:limit] if limit else items
 
     def reindex(self) -> int:

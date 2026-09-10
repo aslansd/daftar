@@ -101,6 +101,29 @@ def cmd_vary(args) -> int:
     return 0
 
 
+def cmd_browse(args) -> int:
+    """Write a self-contained HTML view of the run store."""
+    import webbrowser
+
+    from .browse import write_html
+
+    store = _store(args)
+    if not store.runs_dir.exists() or not store.list_ids():
+        print(f"No runs recorded in {store.dir}")
+        return 0
+
+    out = write_html(store, args.output or "daftar-runs.html",
+                     limit=args.limit, label=args.label)
+    size_kb = out.stat().st_size / 1024
+    n = len(store.list(limit=args.limit, label=args.label))
+    print(f"Wrote {out} ({n} runs, {size_kb:.1f} KiB)")
+    print("Self-contained: no server, no network. Open it anywhere.")
+
+    if args.open:
+        webbrowser.open(out.resolve().as_uri())
+    return 0
+
+
 def cmd_doctor(args) -> int:
     """Report the environment and every adapter's status, with reasons."""
     import platform
@@ -198,6 +221,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("vary", help="show what differs across many runs")
     s.add_argument("-l", "--label")
     s.set_defaults(func=cmd_vary)
+
+    s = sub.add_parser("browse", help="write a self-contained HTML run browser")
+    s.add_argument("-o", "--output", help="output path (default daftar-runs.html)")
+    s.add_argument("-n", "--limit", type=int)
+    s.add_argument("-l", "--label")
+    s.add_argument("--open", action="store_true", help="open it in a browser")
+    s.set_defaults(func=cmd_browse)
 
     s = sub.add_parser("doctor", help="report environment and adapter status")
     s.set_defaults(func=cmd_doctor)

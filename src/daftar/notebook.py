@@ -182,6 +182,72 @@ def session_meta() -> dict[str, Any]:
         return {}
 
 
+def _assigned_names(source: str) -> frozenset[str]:
+    """Top-level names a cell binds: assignments, defs, classes, imports.
+
+    Used as a cell's *identity*. Two cells that bind the same names are almost
+    always two versions of the same cell -- which is what makes it possible to
+    notice that one was edited and re-run.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return frozenset()
+
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            if isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                               ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                names.add((alias.asname or alias.name).split(".")[0])
+    return frozenset(names)
+
+
+def session_redefinitions(history: list[str]) -> dict[str, Any]:
+    """Find names bound by more than one *distinct* cell body in this session.
+
+    This is the single most common way a notebook result goes stale: you edit a
+    cell, re-run it, and everything downstream that already used the old
+    definition is now inconsistent with everything that used the new one. The
+    notebook on disk shows only the final text, so nothing on screen says which
+    of your results came from which version.
+
+    Detecting it needs a notion of "the same cell", and cell identity is not
+    something Jupyter records. The names a cell binds are a good proxy: a cell
+    that defines ``simulate`` and is later replaced by a different cell that
+    also defines ``simulate`` is a redefinition, whether or not the surrounding
+    text changed.
+
+    Returns the redefined names and how many distinct bodies bound each.
+    """
+    seen: dict[str, set[str]] = {}
+    for cell in history:
+        if not cell.strip():
+            continue
+        body_hash = _sha(cell)
+        for name in _assigned_names(cell):
+            seen.setdefault(name, set()).add(body_hash)
+
+    redefined = {name: len(bodies) for name, bodies in seen.items()
+                 if len(bodies) > 1}
+    return {
+        "names": sorted(redefined),
+        "counts": redefined,
+        "n_redefined": len(redefined),
+    }
+
+
 def notebook_context(cell_source: str | None = None) -> dict[str, Any]:
     """Everything worth recording about the notebook session, or ``{}``.
 
@@ -215,6 +281,15 @@ def notebook_context(cell_source: str | None = None) -> dict[str, Any]:
         prior = [c for c in prior if c.strip()]
         ctx["session_n_cells"] = len(prior)
         ctx["session_history_sha256"] = _sha("\n\x00\n".join(prior))[:16]
+
+        # Cells edited and re-run during this session. The result you are about
+        # to record was built on top of whichever version happened to run last,
+        # and the notebook on disk shows only the final text.
+        redefinitions = session_redefinitions(prior)
+        ctx["session_n_redefined"] = redefinitions["n_redefined"]
+        if redefinitions["names"]:
+            ctx["session_redefined"] = redefinitions["names"]
+            ctx["session_stale_risk"] = True
 
     path = _notebook_path(shell)
     if path:
