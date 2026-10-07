@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.1 — `result.training.converged` is a scalar again
+
+1.1.0 changed `result.training.converged` from a bool to the per-call list,
+breaking `test_sbi_flags_training_that_hit_the_epoch_limit`:
+
+```
+assert m.get("result.training.converged") == "false"
+AssertionError: assert '[false]' == 'false'
+```
+
+Worse, it did so **inconsistently**: the branch reading sbi's own entry logged a
+list, while the fallback branch for older sbi logged a bool. One field name, two
+types, depending on which path fired — which is exactly the drift this package
+exists to catch, in its own output.
+
+`converged` is the scalar it has always been: the outcome of the most recent
+`train()` call. The per-call series is now `converged_all`, beside it rather
+than replacing it. `converged_last` is gone; it was a second name for the same
+value.
+
 ## 1.1.0 — three adapters now read what their libraries record
 
 Three of the frameworks daftar adapts have added attributes in response to
