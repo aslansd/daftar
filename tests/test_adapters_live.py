@@ -16,6 +16,7 @@ Run this after every upgrade of a target framework, not just at release.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -1437,3 +1438,161 @@ def test_netpyne_changed_probability_is_a_cause(store):
     assert "result.network.n_connections" in effects
     assert int(a.get("result.network.n_connections")) < \
            int(b.get("result.network.n_connections"))
+
+
+# ---------------------------------------------------------------------------
+# Reading what upstream now records
+#
+# Three libraries added attributes in response to issues raised while writing
+# these adapters. Each adapter had been reconstructing the value, and each
+# reconstruction was subtly wrong against the library's own definition. The
+# adapters now prefer the library's answer and record which source was used.
+# ---------------------------------------------------------------------------
+
+class _Stub:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def _fields(fn, obj, tmp_path, **kwargs):
+    """Run one describe_* function and return the manifest fields.
+
+    Manifest values are always strings -- that is the storage format, so a
+    logged ``True`` reads back as ``"true"`` and a logged ``None`` as
+    ``"null"``.
+    """
+    import json
+    import os
+
+    import daftar
+
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        with daftar.track("probe") as run:
+            fn(obj, run, **kwargs)
+        newest = max(Path(".daftar/runs").glob("*.json"),
+                     key=lambda p: p.stat().st_mtime)
+        return json.loads(newest.read_text())["fields"]
+    finally:
+        os.chdir(cwd)
+
+
+class TestCpmNumberOfStarts:
+    """cpm retains `number_of_starts` as of DevComPsy/cpm#85.
+
+    Before that it was consumed in `__init__` and discarded, so the only route
+    was `len(initial_guess)` -- which stops describing what the user asked for
+    once `reset()` regenerates the array.
+    """
+
+    def test_prefers_the_attribute(self, tmp_path):
+        import numpy as np
+
+        from daftar.adapters import cpm_adapter
+
+        opt = _Stub(number_of_starts=8, initial_guess_supplied=True,
+                    initial_guess=np.zeros((3, 2)), prior=None, cl=None,
+                    ppt_identifier=None)
+        fields = _fields(cpm_adapter.describe_optimiser, opt, tmp_path)
+
+        # 8, not 3: the attribute, not the array length.
+        assert fields["param.fit.number_of_starts"] == "8"
+        assert fields["param.fit.number_of_starts_source"] == "cpm attribute"
+        assert fields["param.fit.initial_guess_supplied"] == "true"
+
+    def test_falls_back_for_older_cpm_and_says_so(self, tmp_path):
+        import numpy as np
+
+        from daftar.adapters import cpm_adapter
+
+        opt = _Stub(initial_guess=np.zeros((5, 2)), prior=None, cl=None,
+                    ppt_identifier=None)
+        fields = _fields(cpm_adapter.describe_optimiser, opt, tmp_path)
+
+        assert fields["param.fit.number_of_starts"] == "5"
+        assert "inferred" in fields["param.fit.number_of_starts_source"]
+        # Not recoverable before #85, so it must not be invented.
+        assert "param.fit.initial_guess_supplied" not in fields
+
+
+class TestSbiConverged:
+    """sbi records `summary["converged"]` as of sbi-dev/sbi#2018."""
+
+    def test_prefers_the_summary_entry(self, tmp_path):
+        from daftar.adapters import sbi_adapter
+
+        for converged in (True, False):
+            fields = _fields(
+                sbi_adapter.describe_training_outcome,
+                _Stub(summary={"epochs_trained": [134], "converged": [converged]}),
+                tmp_path,
+            )
+            assert fields["result.training.converged_last"] == str(converged).lower()
+            assert fields["result.training.converged_source"] == "sbi.summary"
+
+    def test_none_means_unknown_not_false(self, tmp_path):
+        """A trainer saved before #2018 has a genuinely unknown outcome."""
+        from daftar.adapters import sbi_adapter
+
+        fields = _fields(
+            sbi_adapter.describe_training_outcome,
+            _Stub(summary={"epochs_trained": [50], "converged": [None]}),
+            tmp_path,
+        )
+        assert fields["result.training.converged_last"] == "null"
+        assert "unknown" in fields["result.training.converged_source"]
+
+    def test_the_fallback_matches_sbis_own_rule(self, tmp_path):
+        """sbi converges at `epoch <= max_num_epochs`, not `<`.
+
+        Its loop is `while epoch <= max_num_epochs and not converged`, so it
+        leaves at `max_num_epochs + 1` when the budget runs out. A fit that
+        converges exactly at the limit used to be reported as truncated.
+        """
+        from daftar.adapters import sbi_adapter
+
+        at_limit = _fields(
+            sbi_adapter.describe_training_outcome,
+            _Stub(summary={"epochs_trained": [200]}), tmp_path,
+            max_num_epochs=200,
+        )
+        over = _fields(
+            sbi_adapter.describe_training_outcome,
+            _Stub(summary={"epochs_trained": [201]}), tmp_path,
+            max_num_epochs=200,
+        )
+        assert at_limit["result.training.converged"] == "true"
+        assert over["result.training.converged"] == "false"
+        assert "inferred" in at_limit["result.training.converged_source"]
+
+
+class TestMneConverged:
+    """MNE records `ICA.converged_` as of mne-tools/mne-python#14370."""
+
+    def test_prefers_the_attribute(self, tmp_path):
+        from daftar.adapters import mne_adapter
+
+        for converged in (True, False):
+            ica = _Stub(converged_=converged, n_iter_=129, max_iter=2000,
+                        fit_params={}, ch_names=["a"], n_samples_=10,
+                        exclude=[], method="infomax", random_state=97)
+            fields = _fields(mne_adapter.describe_ica, ica, tmp_path)
+            assert fields["result.ica.converged"] == str(converged).lower()
+            assert fields["result.ica.converged_source"] == "ICA.converged_"
+
+    def test_the_fallback_is_labelled_as_unreliable(self, tmp_path):
+        """`n_iter_ < max_iter` was never valid for the Infomax backend.
+
+        Before mne-python#14366 it signalled convergence by assigning
+        `step = max_iter`, so `n_iter_` was the budget either way.
+        """
+        from daftar.adapters import mne_adapter
+
+        ica = _Stub(n_iter_=129, max_iter=2000, fit_params={}, ch_names=["a"],
+                    n_samples_=10, exclude=[], method="infomax", random_state=97)
+        fields = _fields(mne_adapter.describe_ica, ica, tmp_path)
+
+        assert fields["result.ica.converged"] == "true"
+        assert "inferred" in fields["result.ica.converged_source"]
+        assert "infomax" in fields["result.ica.converged_source"]
