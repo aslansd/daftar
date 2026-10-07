@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.1.0 — three adapters now read what their libraries record
+
+Three of the frameworks daftar adapts have added attributes in response to
+issues raised while writing those adapters. Each adapter had been
+*reconstructing* the value, and each reconstruction turned out to be subtly
+wrong against the library's own definition.
+
+| library | now records | daftar had been computing | the discrepancy |
+|---|---|---|---|
+| **cpm** ([#85](https://github.com/DevComPsy/cpm/pull/85)) | `number_of_starts`, `initial_guess_supplied` | `len(optimiser.initial_guess)` | after `reset()` cpm regenerates the array, so the length stops describing what the user asked for |
+| **sbi** ([#2014](https://github.com/sbi-dev/sbi/issues/2014) → [#2018](https://github.com/sbi-dev/sbi/pull/2018)) | `summary["converged"]` | `epochs_trained[-1] < max_num_epochs` | sbi's rule is `epoch <= max_num_epochs`; a fit converging exactly at the limit was reported as truncated |
+| **MNE-Python** ([#14335](https://github.com/mne-tools/mne-python/issues/14335) → [#14366](https://github.com/mne-tools/mne-python/pull/14366), [#14370](https://github.com/mne-tools/mne-python/pull/14370)) | `ICA.converged_`, and a true `n_iter_` | `n_iter_ < max_iter` | the Infomax backend signalled convergence by assigning `step = max_iter`, so `n_iter_` was the *budget* either way — the comparison carried no information there, and read the opposite way round from FastICA |
+
+Each adapter now prefers the library's answer, falls back to inference for older
+versions, and records **which** in a `*_source` field:
+
+```
+result.training.converged_last    = true
+result.training.converged_source  = sbi.summary
+```
+
+```
+param.fit.number_of_starts        = 8
+param.fit.number_of_starts_source = cpm attribute
+```
+
+A value the library stated and a value we worked out are different kinds of
+fact, and only one of them stays correct when the library changes. Recording
+which you have is the minimum honest thing — and it is what daftar exists to do,
+now applied to daftar's own output.
+
+Two details worth keeping:
+
+- **sbi's `None`.** A trainer saved by a version before #2018 reports
+  `converged: [None]`. That is the right answer rather than a missing one — the
+  outcome of that call is genuinely unknown — and the adapter records it as
+  unknown rather than defaulting it to `False`.
+- **The fallbacks were corrected, not just deprioritised.** The sbi fallback now
+  uses `<=` to match sbi's own loop condition, and the MNE fallback states in
+  its own text that it was never valid for Infomax.
+
+Seven new tests covering both the new and the old library versions for all
+three.
+
 ## 1.0.0 — pytest plugin, notebook staleness, run browser
 
 The three non-adapter items from the roadmap, and the end of the build list.
