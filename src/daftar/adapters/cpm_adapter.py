@@ -218,29 +218,42 @@ def describe_optimiser(optimiser: Any, run: Run, prefix: str = "fit") -> None:
     # These are constructor arguments stored as plain attributes, not in
     # ``kwargs``, so a generic tracker that only reads kwargs misses them.
     #
-    # ``number_of_starts`` is never retained by cpm: it is consumed in
-    # ``__init__`` to build ``initial_guess`` with shape
-    # ``(number_of_starts, n_free_params)`` and then discarded. cpm itself
-    # recovers it as ``self.initial_guess.shape[0]``, so we do the same.
+    # cpm retains ``number_of_starts`` and ``initial_guess_supplied`` as of
+    # DevComPsy/cpm#85. Before that it consumed ``number_of_starts`` in
+    # ``__init__`` to build ``initial_guess`` and discarded it, so the only way
+    # to recover it was ``len(initial_guess)`` -- which stops describing what
+    # the user asked for once ``reset()`` regenerates the array. Prefer the
+    # attribute, fall back to the length, and record which was used: a value
+    # the library stated and a value we worked out are different kinds of fact.
+    starts = safe(lambda: optimiser.number_of_starts)
     guess = safe(lambda: optimiser.initial_guess)
+
+    if starts is not None:
+        run.log_param(f"{prefix}.number_of_starts", int(starts))
+        run.log_param(f"{prefix}.number_of_starts_source", "cpm attribute")
+    elif guess is not None:
+        run.log_param(f"{prefix}.number_of_starts", safe(lambda: len(guess), "unknown"))
+        run.log_param(f"{prefix}.number_of_starts_source",
+                      "inferred from len(initial_guess); cpm < #85")
+    else:
+        run.log_param(f"{prefix}.number_of_starts", 1)
+        run.log_param(f"{prefix}.number_of_starts_source", "default")
+
+    # Whether the guesses were user-supplied was not recoverable before #85.
+    supplied = safe(lambda: optimiser.initial_guess_supplied)
+    if supplied is not None:
+        run.log_param(f"{prefix}.initial_guess_supplied", bool(supplied))
+
     if guess is not None:
-        run.log_param(
-            f"{prefix}.number_of_starts", safe(lambda: len(guess), "unknown")
-        )
-        # Record the guesses themselves rather than a "were these supplied?"
-        # flag. cpm keeps no record of whether guesses were user-supplied or
-        # drawn at random, so that flag is not recoverable -- but the values
-        # are, and they are strictly more useful. If they were drawn randomly
-        # they differ between runs, so a diff shows
-        # ``param.fit.initial_guess`` as a candidate cause of a different fit
-        # instead of leaving the divergence unexplained.
+        # Record the guesses themselves as well. If they were drawn randomly
+        # they differ between runs, so a diff shows ``param.fit.initial_guess``
+        # as a candidate cause of a different fit instead of leaving the
+        # divergence unexplained.
         run.log_param(
             f"{prefix}.initial_guess",
             safe(lambda: [[round(float(v), 8) for v in row] for row in guess],
                  "<unavailable>"),
         )
-    else:
-        run.log_param(f"{prefix}.number_of_starts", 1)
 
     run.log_param(f"{prefix}.parallel", bool(safe(lambda: optimiser.__parallel__, False)))
     cores = safe(lambda: optimiser.cl)

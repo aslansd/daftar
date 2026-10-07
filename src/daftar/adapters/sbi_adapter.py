@@ -236,12 +236,24 @@ def train(inference: Any, run: Run, prefix: str = "training", **kwargs: Any):
 def describe_training_outcome(inference: Any, run: Run,
                               max_num_epochs: Any = None,
                               prefix: str = "training") -> None:
-    """Record how training ended, which sbi only ever warns about.
+    """Record how training ended.
 
     Stopping because validation loss plateaued and stopping because the epoch
-    limit was reached are completely different outcomes. sbi raises a
-    ``UserWarning`` for the second and stores nothing you would notice
-    afterwards, so a posterior from a truncated fit looks like any other.
+    limit was reached are completely different outcomes, and a posterior from a
+    truncated fit looks like any other.
+
+    sbi records this itself as of sbi-dev/sbi#2018: ``summary["converged"]``
+    holds one entry per ``train()`` call -- ``True`` if validation loss stopped
+    improving, ``False`` if ``max_num_epochs`` ran out, and ``None`` for a
+    trainer saved by a version that did not record it. That ``None`` is the
+    right answer rather than a missing one: the outcome of that call is
+    genuinely unknown.
+
+    Where the entry is absent the outcome is inferred by comparing the epoch
+    count against the limit, which is what this adapter did for every version
+    before #2018. The two are reported differently, because a value the library
+    stated and a value we worked out are not the same kind of fact, and only
+    one of them stays correct when the library changes.
     """
     summary = safe(lambda: dict(inference.summary), {}) or {}
 
@@ -249,8 +261,28 @@ def describe_training_outcome(inference: Any, run: Run,
     if epochs:
         run.log_result(f"{prefix}.epochs_trained", epochs)
         run.log_result(f"{prefix}.epochs_trained_last", epochs[-1])
-        if isinstance(max_num_epochs, int):
-            run.log_result(f"{prefix}.converged", epochs[-1] < max_num_epochs)
+
+    reported = safe(lambda: list(summary.get("converged", [])), [])
+    if reported:
+        run.log_result(f"{prefix}.converged", reported)
+        last = reported[-1]
+        run.log_result(f"{prefix}.converged_last",
+                       None if last is None else bool(last))
+        run.log_result(
+            f"{prefix}.converged_source",
+            "sbi.summary" if last is not None
+            else "unknown (trainer predates sbi#2018)",
+        )
+    elif epochs and isinstance(max_num_epochs, int):
+        # Match sbi's own rule exactly. Its loop is
+        # ``while epoch <= max_num_epochs and not converged``, so it leaves at
+        # ``max_num_epochs + 1`` when the budget runs out and ``epoch <=
+        # max_num_epochs`` is the converged branch. This adapter previously
+        # used ``<``, which reported a fit converging exactly at the limit as
+        # truncated.
+        run.log_result(f"{prefix}.converged", epochs[-1] <= max_num_epochs)
+        run.log_result(f"{prefix}.converged_source",
+                       "inferred from epochs_trained vs max_num_epochs")
 
     losses = safe(
         lambda: [round(float(v), 6) for v in summary.get("best_validation_loss", [])],

@@ -11,9 +11,15 @@ What this records that a generic tracker cannot:
 * **`ica.exclude`.** The single most consequential unrecorded decision in EEG/MEG
   analysis. A reviewer asking "which components did you remove?" is asking a
   question that usually has no answer six months later.
-* **Whether ICA converged.** `n_iter_ == max_iter` means FastICA hit the
-  iteration limit and stopped, not that it finished. MNE reports this as a
-  warning at fit time and stores nothing you would notice afterwards.
+* **Whether ICA converged.** A decomposition that stopped at `max_iter` still
+  produces components, those components are still used to choose `ica.exclude`,
+  and the exclusions are applied to the data. MNE now records this as
+  `ICA.converged_` and writes it into `-ica.fif` (mne-python#14370); before
+  that it was reported only as a warning at fit time, which does not survive
+  `ica.save()`. Where the attribute is absent this adapter falls back to
+  comparing `n_iter_` against `max_iter` and says so -- that comparison was
+  never valid for the Infomax backend, which returned the budget either way
+  until mne-python#14366.
 * **`random_state=None`.** ICA without a seed is not reproducible, and the
   resulting components -- and therefore the exclusions -- differ between runs.
 * **Filter design parameters.** `raw.filter()` updates `info['highpass']` and
@@ -316,9 +322,27 @@ def describe_ica(ica: Any, run: Run, prefix: str = "ica") -> None:
     max_iter = safe(lambda: ica.max_iter)
     if n_iter is not None:
         run.log_result(f"{prefix}.n_iter", n_iter)
-        # Hitting the iteration limit means it stopped, not that it finished.
-        if isinstance(max_iter, int):
-            run.log_result(f"{prefix}.converged", n_iter < max_iter)
+
+    # MNE records this itself as of mne-tools/mne-python#14370: ``converged_``
+    # is a strict bool for all four backends, and it survives ``ica.save()``.
+    #
+    # Inferring it from ``n_iter_ < max_iter`` was never right for every
+    # backend. Before #14366 the Infomax path signalled convergence by
+    # assigning ``step = max_iter`` to leave its training loop, so ``n_iter_``
+    # was the iteration *budget* whether or not it converged -- the comparison
+    # carried no information there, and read the opposite way round from
+    # FastICA. Prefer the attribute, and say which was used.
+    converged = safe(lambda: ica.converged_)
+    if converged is not None:
+        run.log_result(f"{prefix}.converged", bool(converged))
+        run.log_result(f"{prefix}.converged_source", "ICA.converged_")
+    elif n_iter is not None and isinstance(max_iter, int):
+        run.log_result(f"{prefix}.converged", n_iter < max_iter)
+        run.log_result(
+            f"{prefix}.converged_source",
+            "inferred from n_iter < max_iter; unreliable for infomax "
+            "before mne#14366",
+        )
 
     run.log_param(f"{prefix}.n_channels_used",
                   safe(lambda: len(ica.ch_names), "unknown"))
