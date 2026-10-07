@@ -264,10 +264,14 @@ def describe_training_outcome(inference: Any, run: Run,
 
     reported = safe(lambda: list(summary.get("converged", [])), [])
     if reported:
-        run.log_result(f"{prefix}.converged", reported)
         last = reported[-1]
-        run.log_result(f"{prefix}.converged_last",
+        # ``converged`` stays the scalar it has always been -- the outcome of
+        # the most recent ``train()`` call. Changing a field's type between
+        # releases is the drift this package exists to catch, so the per-call
+        # series goes beside it under a new name rather than replacing it.
+        run.log_result(f"{prefix}.converged",
                        None if last is None else bool(last))
+        run.log_result(f"{prefix}.converged_all", reported)
         run.log_result(
             f"{prefix}.converged_source",
             "sbi.summary" if last is not None
