@@ -1528,7 +1528,7 @@ class TestSbiConverged:
                 _Stub(summary={"epochs_trained": [134], "converged": [converged]}),
                 tmp_path,
             )
-            assert fields["result.training.converged_last"] == str(converged).lower()
+            assert fields["result.training.converged"] == str(converged).lower()
             assert fields["result.training.converged_source"] == "sbi.summary"
 
     def test_none_means_unknown_not_false(self, tmp_path):
@@ -1540,7 +1540,7 @@ class TestSbiConverged:
             _Stub(summary={"epochs_trained": [50], "converged": [None]}),
             tmp_path,
         )
-        assert fields["result.training.converged_last"] == "null"
+        assert fields["result.training.converged"] == "null"
         assert "unknown" in fields["result.training.converged_source"]
 
     def test_the_fallback_matches_sbis_own_rule(self, tmp_path):
