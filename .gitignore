@@ -1,9 +1,7 @@
+.venv/
+venv/
 __pycache__/
 *.py[cod]
-*.egg-info/
-build/
-dist/
-.pytest_cache/
-.daftar/
-.demo-daftar/
-examples/run.zip
+.DS_Store
+.env
+.ipynb_checkpoints/

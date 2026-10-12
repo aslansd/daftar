@@ -1,0 +1,5 @@
+[console_scripts]
+daftar = daftar.cli:main
+
+[pytest11]
+daftar = daftar.pytest_plugin
