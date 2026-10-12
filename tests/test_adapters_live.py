@@ -1596,3 +1596,300 @@ class TestMneConverged:
         assert fields["result.ica.converged"] == "true"
         assert "inferred" in fields["result.ica.converged_source"]
         assert "infomax" in fields["result.ica.converged_source"]
+
+
+# ---------------------------------------------------------------------------
+# baghban -- a Bonsai session
+#
+# The experiment runs in a .NET process, so there is no Python object to
+# inspect. Everything is read from the .bonsai XML and the launcher's command
+# line, which is what makes the adapter worth having: a generic tracker sees
+# one string and cannot read the format.
+#
+# The XML below is built inline rather than borrowed from baghban's own test
+# helpers, which are not installed with the package.
+# ---------------------------------------------------------------------------
+
+_BONSAI_HEADER = """<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+"""
+
+
+def _bonsai_doc(*nodes: str, edges=()) -> str:
+    edge_xml = "".join(
+        f'<Edge From="{a}" To="{b}" Label="Source1" />' for a, b in edges)
+    return (_BONSAI_HEADER
+            + f"  <Workflow><Nodes>{''.join(nodes)}</Nodes>"
+              f"<Edges>{edge_xml}</Edges></Workflow>\n</WorkflowBuilder>\n")
+
+
+def _csv_writer(filename="data.csv", overwrite=False, suffix="None") -> str:
+    return (f'<Expression xsi:type="io:CsvWriter">'
+            f"<io:FileName>{filename}</io:FileName><io:Append>false</io:Append>"
+            f"<io:Overwrite>{str(overwrite).lower()}</io:Overwrite>"
+            f"<io:Suffix>{suffix}</io:Suffix>"
+            f"<io:IncludeHeader>false</io:IncludeHeader></Expression>")
+
+
+def _externalized(prop: str, display: str) -> str:
+    return (f'<Expression xsi:type="ExternalizedMapping">'
+            f'<Property Name="{prop}" DisplayName="{display}" /></Expression>')
+
+
+def _select_many(inner: str) -> str:
+    return (f'<Expression xsi:type="rx:SelectMany"><Workflow>'
+            f"<Nodes>{inner}</Nodes><Edges /></Workflow></Expression>")
+
+
+def _write_rig(folder: Path, *, sound=False) -> Path:
+    """A rig with an externalized output name and a per-trial writer.
+
+    ``sound=False`` gives the broken-but-common shape: a writer inside a
+    per-trial ``SelectMany`` with ``Overwrite=True`` and no suffix, so every
+    trial replaces the last (``SILENT_OVERWRITE``). ``sound=True`` gives it
+    ``Suffix=FileCount``, which is what baghban's own hint recommends and is
+    the only way that writer is correct.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    per_trial = (_csv_writer("trial.csv", suffix="FileCount") if sound
+                 else _csv_writer("trial.csv", overwrite=True, suffix="None"))
+    doc = _bonsai_doc(
+        _externalized("FileName", "Animal"),
+        _csv_writer("session.csv", suffix="Timestamp"),
+        _select_many(per_trial),
+        edges=[(0, 1)],
+    )
+    path = folder / "rig.bonsai"
+    path.write_text(doc)
+    return path
+
+
+@_require("baghban")
+def test_baghban_records_the_effective_property_not_just_the_command_line(store, tmp_path):
+    """``--property`` overrides the file, and only the two together give the value.
+
+    The command line says ``Animal=M12.csv``; the file says which property that
+    name reaches and what every other property is set to. A tracker with only
+    the command line cannot report the second, and one with only the file
+    reports a value the session did not use.
+    """
+    from daftar.adapters import baghban as bga
+
+    rig = _write_rig(tmp_path / "rig")
+    argv = ["Bonsai.exe", "rig.bonsai", "--no-editor", "--property", "Animal=M12.csv"]
+
+    with daftar.track("session", store=store) as run:
+        bga.describe_launch(argv, run, cwd=rig.parent)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.bonsai.property.Animal") == "M12.csv"   # what was passed
+    assert m.get("param.bonsai.param.Animal") == "M12.csv"      # what took effect
+    assert m.get("param.bonsai.version") == "2.9.0"
+    assert m.get("param.bonsai.workflow").endswith("rig.bonsai")
+    # The raw command line is kept too, so the manifest can be checked against
+    # what was actually run.
+    assert "--property" in m.get("param.bonsai.command_line")
+
+
+@_require("baghban")
+def test_baghban_fingerprint_survives_a_layout_change_but_the_hash_does_not(store, tmp_path):
+    """Moving a node rewrites the file and changes nothing about the protocol.
+
+    This is the reason both are recorded. A file hash alone reports every
+    cosmetic edit as a changed experiment; a fingerprint alone cannot tell you
+    the bytes on disk differ from the ones in the paper's supplement.
+    """
+    from daftar.adapters import baghban as bga
+
+    rig = _write_rig(tmp_path / "rig")
+    original = rig.read_text()
+
+    with daftar.track("before", store=store) as run:
+        bga.describe_workflow(rig, run)
+        first = run.run_id
+
+    # Reformat only: same nodes, same edges, different bytes.
+    rig.write_text(original.replace("><", ">\n    <"))
+
+    with daftar.track("after", store=store) as run:
+        bga.describe_workflow(rig, run)
+        second = run.run_id
+
+    a, b = store.load(first), store.load(second)
+    assert a.get("param.bonsai.fingerprint") == b.get("param.bonsai.fingerprint")
+    assert a.get("input.bonsai.workflow.sha256") != b.get("input.bonsai.workflow.sha256")
+
+
+@_require("baghban")
+def test_baghban_records_that_the_recording_was_broken(store, tmp_path):
+    """A writer that overwrites every trial is a fact about the data.
+
+    ``SILENT_OVERWRITE`` means the CSV hashed at the end of the session holds
+    the last trial rather than all of them. Knowing that *before* the session
+    is the difference between having 200 trials and having trial 200, and it
+    belongs in the run record beside the file hash.
+    """
+    from daftar.adapters import baghban as bga
+
+    rig = _write_rig(tmp_path / "rig")
+
+    with daftar.track("session", store=store) as run:
+        bga.describe_workflow(rig, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert int(m.get("param.bonsai.check.errors")) >= 1
+    assert "CsvWriter" in m.get("param.bonsai.check.SILENT_OVERWRITE")
+
+
+@_require("baghban")
+def test_baghban_a_clean_rig_reports_no_errors(store, tmp_path):
+    """The negative case: the check fields must not fire on a sound workflow."""
+    from daftar.adapters import baghban as bga
+
+    rig = _write_rig(tmp_path / "rig", sound=True)
+
+    with daftar.track("session", store=store) as run:
+        bga.describe_workflow(rig, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.bonsai.check.errors") == "0"
+    assert m.get("param.bonsai.check.SILENT_OVERWRITE") is None
+
+
+@_require("baghban")
+def test_baghban_finds_the_output_bonsai_renamed(store, tmp_path):
+    """``Suffix=Timestamp`` means the declared path is never the filename.
+
+    The workflow says ``session.csv``; the launcher renames it to ``M12.csv``
+    through the externalized property; Bonsai then writes ``M12`` + a timestamp
+    + ``.csv``. Hashing the name as written finds nothing, which is exactly the
+    mistake this spares the researcher.
+    """
+    from daftar.adapters import baghban as bga
+
+    folder = tmp_path / "rig"
+    rig = _write_rig(folder)
+    argv = ["Bonsai.exe", "rig.bonsai", "--no-editor", "--property", "Animal=M12.csv"]
+
+    with daftar.track("session", store=store) as run:
+        with bga.session(rig, run, command_line=argv, cwd=folder):
+            # Stand in for Bonsai.exe.
+            (folder / "M122026-10-12T09-00-00.csv").write_text("t,v\n1,0.3\n")
+            (folder / "trial.csv").write_text("t,v\n1,0.3\n")
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("output.M122026-10-12T09-00-00.csv.sha256") is not None
+    assert m.get("output.trial.csv.sha256") is not None
+    # The declared path reflects the override, not the saved value.
+    assert m.get("param.bonsai.output.0") == "M12.csv"
+
+
+@_require("baghban")
+def test_baghban_hashes_outputs_even_when_the_session_fails(store, tmp_path):
+    """A session that crashed three hours in is the one worth having a record of."""
+    from daftar.adapters import baghban as bga
+
+    folder = tmp_path / "rig"
+    rig = _write_rig(folder)
+
+    with pytest.raises(RuntimeError):
+        with daftar.track("session", store=store) as run:
+            rid = run.run_id
+            with bga.session(rig, run, cwd=folder):
+                (folder / "trial.csv").write_text("t,v\n1,0.3\n")
+                raise RuntimeError("rig lost the camera")
+
+    m = store.load(rid)
+    assert m.get("output.trial.csv.sha256") is not None
+
+
+@_require("baghban")
+def test_baghban_records_a_missing_output_as_missing(store, tmp_path):
+    """Declared and absent is a finding, not an error.
+
+    A disabled branch or an aborted session leaves nothing behind, and saying
+    so is more useful than an empty manifest or a crash.
+    """
+    from daftar.adapters import baghban as bga
+
+    folder = tmp_path / "rig"
+    rig = _write_rig(folder)
+
+    with daftar.track("session", store=store) as run:
+        bga.add_outputs(rig, run, base=folder)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.bonsai.output.0.status") == "not found"
+
+
+@_require("baghban")
+def test_baghban_an_unreadable_workflow_does_not_end_the_run(store, tmp_path):
+    """A provenance tool must never be the reason a session dies.
+
+    The reason is recorded so the gap is visible, rather than leaving fields
+    quietly absent.
+    """
+    from daftar.adapters import baghban as bga
+
+    broken = tmp_path / "broken.bonsai"
+    broken.write_text("<not-a-workflow>")
+
+    with daftar.track("session", store=store) as run:
+        result = bga.describe_workflow(broken, run)
+        rid = run.run_id
+
+    assert result is None
+    m = store.load(rid)
+    assert m.get("param.bonsai.workflow_unreadable") is not None
+    assert m.get("meta.status") == "completed"
+
+
+@_require("baghban")
+def test_baghban_hashes_the_include_tree(store, tmp_path):
+    """Includes are separate files that change behaviour, so they are inputs."""
+    from daftar.adapters import baghban as bga
+
+    folder = tmp_path / "rig"
+    folder.mkdir(parents=True)
+    (folder / "stim.bonsai").write_text(_bonsai_doc(_csv_writer("stim.csv")))
+    rig = folder / "rig.bonsai"
+    rig.write_text(_bonsai_doc(
+        '<Expression xsi:type="IncludeWorkflow" Path="stim.bonsai" />',
+        _csv_writer("session.csv"),
+    ))
+
+    with daftar.track("session", store=store) as run:
+        bga.describe_workflow(rig, run)
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.bonsai.include.stim.bonsai") == "ok"
+    assert m.get("input.bonsai.include.stim.bonsai.sha256") is not None
+
+
+@_require("baghban")
+def test_baghban_prefix_separates_two_rigs_in_one_run(store, tmp_path):
+    """One session driving two rigs must not have its fields collide."""
+    from daftar.adapters import baghban as bga
+
+    a = _write_rig(tmp_path / "a")
+    b = _write_rig(tmp_path / "b", sound=True)
+
+    with daftar.track("two-rigs", store=store) as run:
+        bga.describe_workflow(a, run, prefix="cam")
+        bga.describe_workflow(b, run, prefix="ephys")
+        rid = run.run_id
+
+    m = store.load(rid)
+    assert m.get("param.cam.bonsai.check.errors") == "1"
+    assert m.get("param.ephys.bonsai.check.errors") == "0"
+    assert m.get("param.cam.bonsai.workflow") != m.get("param.ephys.bonsai.workflow")

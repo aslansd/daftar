@@ -8,7 +8,8 @@ at module load.
 from __future__ import annotations
 
 from . import (
-    brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter, mne_adapter,
+    baghban_adapter, brian2_adapter, cpm_adapter, jaxley_adapter, meltingpot_adapter,
+    mne_adapter,
     concordia_adapter, gdsfactory_adapter, netpyne_adapter, nilearn_adapter,
     sbi_adapter,
 )
@@ -28,6 +29,7 @@ registry.register("nilearn", nilearn_adapter)
 registry.register("gdsfactory", gdsfactory_adapter)
 registry.register("netpyne", netpyne_adapter)
 registry.register("concordia", concordia_adapter)
+registry.register("baghban", baghban_adapter)
 
 jaxley = jaxley_adapter
 cpm = cpm_adapter
@@ -39,6 +41,7 @@ nilearn = nilearn_adapter
 gdsfactory = gdsfactory_adapter
 netpyne = netpyne_adapter
 concordia = concordia_adapter
+baghban = baghban_adapter
 
 
 def available() -> list[str]:
@@ -71,8 +74,10 @@ def get(name: str):
 __all__ = [
     "registry", "available", "get",
     "jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory", "netpyne", "concordia",
+    "baghban",
     "jaxley_adapter", "cpm_adapter", "meltingpot_adapter", "brian2_adapter",
     "mne_adapter", "sbi_adapter", "nilearn_adapter", "gdsfactory_adapter", "netpyne_adapter", "concordia_adapter",
+    "baghban_adapter",
     "Adapter", "AdapterRegistry", "safe", "record_optional",
     "status", "probe_import", "AVAILABLE", "MISSING", "BROKEN",
 ]

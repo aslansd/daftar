@@ -359,6 +359,7 @@ knowing something a generic tracker cannot infer.
 | `netpyne` | **whether the compiled NEURON mechanism library is stale** — a `.mod` edit without `nrnivmodl` silently runs the old binary — plus NetPyNE's four RNG seeds, `hParams`, the realised connection count, and per-section model hashes |
 | `nilearn` | **which confounds were regressed out** (a runtime argument nilearn forgets), the mask that actually resolved, the atlas region count, GLM design columns, and `cov_estimator` resolving to Ledoit-Wolf |
 | `sbi` | **the training hyperparameters sbi discards** and whether training converged or hit the epoch limit, the resolved density-estimator architecture, and the proposal each round drew from |
+| `baghban` | **whether the recording was broken before the session ran** — a writer that replaces the file every trial leaves you with trial 200, not 200 trials — plus the *effective* value of each externalized property (the launcher's `--property` overrides the file), a content fingerprint that ignores layout, the include tree, and the files Bonsai renamed on the way out |
 | `mne` | **which ICA components were excluded** and whether ICA converged, filter *design* rather than just the band, bad channels, epoch drop counts and reasons — with subject data hashed, never stored |
 | `meltingpot` | resolved substrate ConfigDict hash, roles, episode-length cap, pinned bot checkpoints, per-player returns and Gini |
 

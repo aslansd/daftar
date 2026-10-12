@@ -11,11 +11,12 @@ What you should see depends on which frameworks are installed:
 
 | Environment | Result |
 |---|---|
-| daftar only | **85 passed, 35 skipped** — the core and notebook suites, plus the adapter status report which always runs |
-| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **118 passed, 2 skipped** — only MeltingPot missing |
+| daftar only | **93 passed, 45 skipped** — the core, notebook and feature suites, plus the adapter tests that need no framework |
+| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **118 passed** — MeltingPot and baghban missing |
 | Environment B (meltingpot) | **87 passed, 33 skipped** |
+| `pip install baghban` on top of any of them | **+10 passed** — the Bonsai session suite |
 
-**The core, notebook and feature suites must always pass — 84 tests, no exceptions.**
+**The core, notebook and feature suites must always pass — 85 tests, no exceptions.**
 The Concordia adapter is tested here rather than in the live suite: its wrapper
 is duck-typed, so its divergence logic runs against a fake model and needs no
 provider and no Concordia install.
@@ -28,9 +29,9 @@ in `test_core.py` or `test_notebook.py` skips, something is wrong.
 
 | File | Tests | Needs | What it covers |
 |---|---|---|---|
-| `tests/test_core.py` | 52 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store, **and the Concordia adapter** |
+| `tests/test_core.py` | 53 | nothing | manifests, capture, diff verdicts, sweeps, replay, export, store, **and the Concordia adapter** |
 | `tests/test_notebook.py` | 15 | `ipython` | cell hashing, session history, the `%%daftar` magic |
-| `tests/test_adapters_live.py` | 36 | the frameworks | real workloads through each adapter |
+| `tests/test_adapters_live.py` | 53 | the frameworks | real workloads through each adapter |
 | `tests/test_features.py` | 17 | nothing | the pytest plugin, notebook staleness detection, the run browser |
 
 The core and notebook suites must always pass. They have no optional

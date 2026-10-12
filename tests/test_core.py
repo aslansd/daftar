@@ -430,7 +430,10 @@ def test_manifests_are_valid_json_on_disk(store):
 
 def test_adapters_import_without_their_frameworks():
     from daftar import adapters
-    assert set(adapters.registry.all()) == {"jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn", "gdsfactory", "netpyne", "concordia"}
+    assert set(adapters.registry.all()) == {
+        "jaxley", "cpm", "meltingpot", "brian2", "mne", "sbi", "nilearn",
+        "gdsfactory", "netpyne", "concordia", "baghban",
+    }
     for name in adapters.registry.all():
         assert isinstance(adapters.get(name).is_available(), bool)
 
@@ -967,3 +970,38 @@ def test_concordia_transcript_is_written_to_a_file_not_the_manifest(store, tmp_p
     data = json.loads(out.read_text())
     assert data["calls"][0]["prompt"] == secret
     assert m.get("output.transcript.json.sha256")
+
+
+def test_the_reported_version_matches_the_packaged_one():
+    """``daftar.__version__`` and ``pyproject.toml`` must not drift apart.
+
+    1.1.0 and 1.1.1 were published with ``pyproject.toml`` saying 1.1.1 and
+    ``__version__`` still saying 1.0.0, so ``daftar doctor`` and
+    ``daftar.__version__`` both reported the wrong release. The manifest was
+    right, because it reads installed package metadata rather than the
+    attribute -- which is why nothing caught it.
+
+    A provenance tool misreporting its own version is the failure it exists to
+    find, so it is worth a test rather than a habit.
+    """
+    import re
+    import tomllib
+    from pathlib import Path
+
+    import daftar
+
+    root = Path(__file__).resolve().parent.parent
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():  # installed without the sdist layout
+        pytest.skip("pyproject.toml not alongside the package")
+
+    declared = tomllib.load(pyproject.open("rb"))["project"]["version"]
+    source = re.search(
+        r'__version__\s*=\s*"([^"]+)"',
+        (root / "src" / "daftar" / "__version__.py").read_text(),
+    ).group(1)
+
+    assert declared == source, (
+        f"pyproject.toml says {declared}, __version__.py says {source}"
+    )
+    assert daftar.__version__ == declared

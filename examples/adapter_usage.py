@@ -340,6 +340,37 @@ print(ca.render_divergence(ca.first_divergence(a, b)))
 # scenario. transcript_path writes the full text to a file the bundle carries.
 '''
 
+# --------------------------------------------------------------- baghban ---
+BAGHBAN = '''
+import subprocess
+import daftar
+from daftar.adapters import baghban as bga
+
+rig = "/rigs/visual/rig.bonsai"
+argv = ["Bonsai.exe", rig, "--no-editor", "--property", "Animal=M12"]
+
+with daftar.track("session-M12", seed=1) as run:
+    with bga.session(rig, run, command_line=argv, cwd="/rigs/visual"):
+        subprocess.run(argv, cwd="/rigs/visual", check=True)
+
+# The session runs in .NET, so there is no Python object to inspect. Recorded
+# from the workflow file and the command line together:
+#
+#   param.bonsai.param.Animal                  effective value, not just the
+#                                              one passed or the one saved
+#   param.bonsai.fingerprint                   content, ignoring node layout
+#   input.bonsai.workflow.sha256               the bytes, which layout changes
+#   input.bonsai.include.<path>.sha256         every include that resolved
+#   param.bonsai.check.errors                  1
+#   param.bonsai.check.SILENT_OVERWRITE        SelectMany #2 > CsvWriter ...
+#   output.<file>.sha256                       what the session wrote, found
+#                                              even where Bonsai renamed it
+#
+# The check fields are the ones to read first. SILENT_OVERWRITE means the CSV
+# just hashed holds the last trial rather than all of them -- knowable before
+# the session, and the difference between 200 trials and trial 200.
+'''
+
 
 def main():
     from daftar import adapters
@@ -353,7 +384,7 @@ def main():
     print("\nReference usage:")
     for title, snippet in (
         ("Jaxley", JAXLEY), ("cpm", CPM), ("Brian2", BRIAN2), ("MNE-Python", MNE), ("sbi", SBI), ("Nilearn", NILEARN), ("gdsfactory", GDSFACTORY), ("NetPyNE", NETPYNE),
-        ("MeltingPot", MELTINGPOT),
+        ("MeltingPot", MELTINGPOT), ("baghban", BAGHBAN),
     ):
         print(f"\n{'-' * 70}\n{title}\n{'-' * 70}{snippet}")
 

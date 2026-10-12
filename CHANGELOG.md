@@ -1,5 +1,71 @@
 # Changelog
 
+## 1.2.0 — a Bonsai session
+
+**New adapter: `baghban`.** Bonsai is the odd one out among the frameworks
+daftar adapts, because the experiment does not run in Python. A rig is started
+as `Bonsai.exe rig.bonsai --no-editor --property Animal=M12`, and everything
+that decides what the session recorded lives in a `.bonsai` XML file and the
+NuGet packages it resolves. A generic tracker wrapping that call sees one
+string and can record nothing else, because it cannot read the format.
+
+```python
+with daftar.track("session-M12", seed=1) as run:
+    with bga.session(rig, run, command_line=argv, cwd=rig_dir):
+        subprocess.run(argv, cwd=rig_dir, check=True)
+```
+
+What it records, through [baghban](https://pypi.org/project/baghban/)'s
+`provenance()` — which that package defines as the entry point for exactly
+this:
+
+- **The effective value of every externalized property.** `--property`
+  overrides the file, and a dotted name walks nested workflows by Bonsai's own
+  rules. The command line alone cannot give the value of a property nobody
+  passed; the file alone gives one the session did not use.
+- **A content fingerprint as well as a file hash.** Moving a node in the editor
+  rewrites every byte and changes nothing about the protocol. Recording both
+  means a cosmetic edit is visible as exactly that.
+- **The include tree**, hashed as inputs, including nested includes a
+  researcher listing them by hand would miss.
+- **The files the session wrote** — found even where Bonsai renamed them. A
+  writer with `Suffix=Timestamp` does not produce `session.csv`; hashing the
+  name as written finds nothing.
+
+And one thing no other adapter does. The others record *what* was run; this one
+also records **whether the recording was broken**, before the data is
+collected:
+
+```
+param.bonsai.check.errors            = 1
+param.bonsai.check.SILENT_OVERWRITE  = SelectMany #2 > CsvWriter 'trial.csv' #0
+```
+
+`SILENT_OVERWRITE` means the CSV about to be hashed holds the last trial rather
+than all of them — the difference between having 200 trials and having trial
+200. Findings are recorded as parameters, not results: daftar's diff separates
+fields that could have *caused* a difference from fields that merely record
+one, and a broken writer is squarely a cause.
+
+Ten tests. `pip install daftar[baghban]`.
+
+### Fixed: daftar reported its own version wrongly
+
+1.1.0 and 1.1.1 shipped with `pyproject.toml` saying the new version and
+`src/daftar/__version__.py` still saying `1.0.0`, so `daftar doctor` and
+`daftar.__version__` both reported 1.0.0 while the installed package was 1.1.1.
+The manifest was unaffected — it reads installed package metadata rather than
+the attribute, which is why nothing caught it.
+
+A provenance tool misreporting its own version is the failure it exists to
+find, so there is now a test asserting the two agree.
+
+### Fixed: `daftar[netpyne]` pulled in Concordia
+
+The `netpyne` extra listed `gdm-concordia`, so installing it for a NEURON
+simulation also installed an LLM agent framework. A copy-paste from the
+`concordia` extra below it.
+
 ## 1.1.1 — `result.training.converged` is a scalar again
 
 1.1.0 changed `result.training.converged` from a bool to the per-call list,
