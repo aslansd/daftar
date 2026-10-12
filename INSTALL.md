@@ -23,7 +23,7 @@ daftar doctor
 Here the honest answer is more complicated than a single command, and it is
 worth understanding why before you start.
 
-**The ten target frameworks cannot currently share one environment.** Each pins
+**The target frameworks cannot currently share one environment.** Each pins
 its dependencies loosely, and their dependencies remove APIs on schedules the
 frameworks do not track. As of this writing:
 
@@ -40,12 +40,13 @@ frameworks do not track. As of this writing:
 | nilearn ≥ 0.11 | `scikit-learn`, `nibabel`, Python ≥ 3.9 | unconstrained; shares Environment A |
 | sbi ≥ 0.23 | pulls **PyTorch**, Python ≥ 3.10 | large download; otherwise unconstrained and shares Environment A |
 | mne ICA | **needs `scikit-learn`** | an *optional* MNE dependency: `import mne` succeeds and `ica.fit()` raises `ImportError` |
+| baghban | **none** — pure Python, zero runtime dependencies | the exception: it reads `.bonsai` XML as a file format, so it needs neither Bonsai nor .NET and installs into any environment above |
 
 This is not anyone's fault and it is not unusual. It is the normal condition of
 a scientific Python environment, and it is a large part of why daftar records
 `env.*` at all.
 
-**Do not try to force all four into one environment.** Use two, and let the test
+**Do not try to force them all into one environment.** Use two, and let the test
 suite skip whatever is absent in each — both suites go green.
 
 ### Concordia is the exception: you may not need to install it at all
@@ -81,6 +82,7 @@ pip install neuron              # netpyne does NOT pull this itself
 #   sbi pulls PyTorch (~2 GB); gdsfactory pulls KLayout; netpyne pulls NEURON
 pip install scikit-learn        # MNE's default ICA (fastica) delegates to it
 pip install "scipy<1.18"        # required by cpm-toolbox 0.25.6; mne is fine with it
+pip install baghban             # Bonsai workflows; pure Python, fits any environment
 pip install pytest ipython      # for the test suite and notebook support
 
 daftar doctor
@@ -89,20 +91,24 @@ daftar doctor
 Expect:
 
 ```
-daftar 0.3.3
+daftar 1.2.0
 python 3.12.14 on Darwin arm64
 
+  baghban     ok
   brian2      ok
+  concordia   ok
   cpm         ok
+  gdsfactory  ok
   jaxley      ok
   meltingpot  -       not installed
   mne         ok
-  concordia   -       not installed   (optional; see above)
-  gdsfactory  ok
   netpyne     ok
   nilearn     ok
   sbi         ok
 ```
+
+(`concordia` reads `ok` only if `gdm-concordia` is installed; the adapter works
+without it either way — see above.)
 
 ### Environment B — meltingpot (Python 3.11)
 
@@ -147,6 +153,7 @@ pip install "daftar[nilearn]"
 pip install "daftar[gdsfactory]"
 pip install "daftar[netpyne]"
 pip install "daftar[concordia]"   # only for running Concordia itself
+pip install "daftar[baghban]"     # reading Bonsai workflows; no Bonsai needed
 pip install "daftar[meltingpot]"
 pip install "daftar[all]"        # will not resolve cleanly on one interpreter
 pip install "daftar[dev]"        # pytest, numpy, ipython

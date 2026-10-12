@@ -12,6 +12,10 @@ gdsfactory
 netpyne
 neuron
 gdm-concordia
+baghban
+
+[baghban]
+baghban
 
 [brian2]
 brian2
@@ -43,7 +47,6 @@ scikit-learn
 [netpyne]
 netpyne
 neuron
-gdm-concordia
 
 [nilearn]
 nilearn

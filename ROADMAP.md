@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last revised 8 October 2026, against daftar 1.1.1 as published on PyPI.*
+*Last revised 12 October 2026, against daftar 1.2.0.*
 
 This file replaces `daftar-next-steps.md`, `daftar-1.1.0-notes.md`, the earlier
 `ROADMAP.md`, and the daftar half of `raftaar-daftar-issue-drafts.md`. Every
@@ -11,25 +11,26 @@ from memory.
 
 ## Where this stands
 
-**1.1.1 on PyPI**, Apache 2.0, **zero runtime dependencies**, **127 tests**,
-**ten framework adapters**. First public release 31 August 2026.
+**1.2.0**, Apache 2.0, **zero runtime dependencies**, **138 tests**,
+**eleven framework adapters**. First public release 31 August 2026.
 
 | | Status |
 |---|---|
 | Core: manifests, diff verdicts, sweeps, replay, export, CLI | shipped |
 | Ten adapters: Jaxley, Brian2, NetPyNE/NEURON, cpm, MNE-Python, Nilearn, sbi, MeltingPot, gdsfactory, Concordia | shipped, each verified against a live install |
+| `baghban` adapter — a Bonsai session (1.2.0) | shipped, see §5 |
 | pytest plugin · notebook staleness detection · run browser · `%%daftar` · `daftar doctor` | shipped |
 | Three adapters read upstream's own recorded values (1.1.0) | shipped |
 | **pyOpenSci review** | **answered — resubmit after 1 December, see below** |
 | **External users** | **none yet — the thing that actually matters** |
 
 ```
-tests/test_core.py            52
+tests/test_core.py            53
 tests/test_features.py        17
 tests/test_notebook.py        15
-tests/test_adapters_live.py   43   (skips whatever framework is absent)
+tests/test_adapters_live.py   53   (skips whatever framework is absent)
                              ---
-                             127
+                             138
 ```
 
 The build list is empty. Everything below is about what the project needs that
@@ -90,6 +91,20 @@ release whose whole point was reading values rather than inventing them. It was
 caught by daftar's own test suite, which had been asserting the 1.0.0 contract.
 Worth remembering the next time a field's shape seems obviously improvable.
 
+**And 1.1.0 and 1.1.1 both reported their own version as 1.0.0.**
+`pyproject.toml` was bumped; `src/daftar/__version__.py` was not, so
+`daftar doctor` and `daftar.__version__` named the wrong release on every
+install of either. The manifest was unaffected — it reads installed package
+metadata rather than the attribute, which is exactly why nothing caught it for
+two releases.
+
+Fixed in 1.2.0, with a test asserting the two agree. A provenance tool
+misreporting its own version is the failure it exists to find, and the near
+miss is instructive: the field that was right (`env.daftar`, from metadata) and
+the field that was wrong (`__version__`, from a literal) differed because one
+was derived from the source of truth and the other was a copy of it. That is
+the same distinction the `*_source` fields draw, applied to daftar itself.
+
 ---
 
 ## 2. pyOpenSci — the real blocker, and it has a date
@@ -105,7 +120,7 @@ is filed and the Scope section is complete. It has one response, from
 
 - First PyPI release: **31 August 2026**
 - Three months reached: **≈ 1 December 2026**
-- Today: 8 October 2026 — about **38 days** of public history
+- Today: 12 October 2026 — about **42 days** of public history
 
 **Set a calendar reminder for 1 December.** On that date, reply in the existing
 thread rather than opening a new submission, and lead with what changed since
@@ -154,9 +169,9 @@ The case is much stronger now than when the announcement plan was written, and
 stronger again once pyOpenSci accepts. What you can say that is checkable in
 under a minute:
 
-- **1.1.1 on PyPI**, `pip install daftar`, Apache 2.0, **zero dependencies**
-- **Ten framework adapters**, each verified against a live install
-- **127 tests**
+- **1.2.0 on PyPI**, `pip install daftar`, Apache 2.0, **zero dependencies**
+- **Eleven framework adapters**, each verified against a live install
+- **138 tests**
 - **Five upstream contributions across five projects; four accepted**
 
 And the finding, which is the better opening than any description of the tool:
@@ -218,7 +233,7 @@ Some version of *"isn't this just MLflow?"* It is a fair question:
 ## 5. Stop adding adapters
 
 The month-12 gate is **200 GitHub stars and 5 external contributors**. Note what
-it does not say: number of adapters. Ten adapters with zero users and twenty
+it does not say: number of adapters. Eleven adapters with zero users and twenty
 adapters with zero users are the same outcome. One adapter with fifteen users
 who would complain if it vanished is a different category of thing.
 
@@ -229,6 +244,26 @@ the inside: productive, technical, and a way of not doing the harder thing.
 
 **Write the next adapter when a user asks for it.** That request is also the
 first evidence anyone cares.
+
+### The eleventh, and what it does not count as
+
+`baghban` shipped in 1.2.0 anyway, so the rule is worth restating rather than
+quietly dropped.
+
+What makes it different from a twelfth: it is **your own package**, so it is not
+a maintenance liability against someone else's release schedule — the fourth
+criterion below, and the one that has already bitten three of the ten. It needs
+no environment of its own, because it reads `.bonsai` XML as a file format and
+depends on nothing. And baghban had already defined the contract: its
+`provenance()` docstring names daftar's Bonsai adapter as the intended caller,
+so the field layout was agreed before the adapter existed.
+
+What it is **not**: a user asking. It does not move the external-users number,
+which is still zero, and it is not evidence that anyone wants it. It was built
+in the window where pyOpenSci wants to see sustained development (§2), and that
+is the honest reason it happened now rather than after someone asked.
+
+The rule stands for everything after it.
 
 ### If one is ever justified, all five must hold
 
@@ -312,7 +347,7 @@ The software is finished for its current scope and the upstream finding is
 closed — four projects engaged, three changed their code. That is a real result
 and better than most tools at this stage can show.
 
-What has not happened is anyone outside the project using it. Ten adapters, a
-plugin, a browser and 127 tests do not change that, and neither will an
-eleventh adapter. The pyOpenSci clock is the one external constraint with a
+What has not happened is anyone outside the project using it. Eleven adapters, a
+plugin, a browser and 138 tests do not change that, and neither will a
+twelfth. The pyOpenSci clock is the one external constraint with a
 date on it; everything else waits on a stranger opening an issue.

@@ -7,14 +7,17 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-What you should see depends on which frameworks are installed:
+What you should see depends on which frameworks are installed. **138 tests are
+collected in every case** — the difference is only how many run:
 
 | Environment | Result |
 |---|---|
-| daftar only | **93 passed, 45 skipped** — the core, notebook and feature suites, plus the adapter tests that need no framework |
-| Environment A (brian2, jaxley, cpm, mne, sbi, nilearn, gdsfactory, netpyne) | **118 passed** — MeltingPot and baghban missing |
-| Environment B (meltingpot) | **87 passed, 33 skipped** |
-| `pip install baghban` on top of any of them | **+10 passed** — the Bonsai session suite |
+| daftar alone | **93 passed, 45 skipped** — core, notebook and feature suites, plus the adapter tests that need no framework |
+| Everything but MeltingPot (brian2, concordia, cpm, gdsfactory, jaxley, mne, netpyne, nilearn, sbi, baghban) | **136 passed, 2 skipped** |
+| MeltingPot alone | **95 passed, 43 skipped** |
+
+The first two were measured; the third is derived from them, since MeltingPot
+contributes exactly the 2 tests the second environment skips.
 
 **The core, notebook and feature suites must always pass — 85 tests, no exceptions.**
 The Concordia adapter is tested here rather than in the live suite: its wrapper
@@ -53,6 +56,12 @@ pytest tests/test_adapters_live.py -v
 conda activate daftar311
 pytest tests/test_adapters_live.py -v
 ```
+
+`baghban` belongs to neither. It is pure Python with no runtime dependencies and
+no .NET requirement — it reads `.bonsai` XML as a file format — so
+`pip install baghban` works in any of these and adds 10 passing tests. Bonsai
+itself is not needed to test the adapter, and the test suite builds the workflow
+XML it needs inline.
 
 See [INSTALL.md](INSTALL.md) for why two environments are needed.
 

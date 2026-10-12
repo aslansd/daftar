@@ -30,6 +30,7 @@ src/daftar.egg-info/entry_points.txt
 src/daftar.egg-info/requires.txt
 src/daftar.egg-info/top_level.txt
 src/daftar/adapters/__init__.py
+src/daftar/adapters/baghban_adapter.py
 src/daftar/adapters/base.py
 src/daftar/adapters/brian2_adapter.py
 src/daftar/adapters/concordia_adapter.py
