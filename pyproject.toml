@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daftar"
+version = "1.1.1"
+description = "Record what produced each computational result: environment, code, parameters, seeds, inputs."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Aslan Satary Dizaji"}]
+keywords = ["reproducibility", "provenance", "simulation", "computational-science"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = []   # deliberately none: stdlib only
+
+[project.urls]
+Homepage = "https://github.com/aslansd/daftar"
+Repository = "https://github.com/aslansd/daftar"
+Issues = "https://github.com/aslansd/daftar/issues"
+
+[project.optional-dependencies]
+jaxley = ["jaxley"]
+cpm = ["cpm-toolbox"]
+meltingpot = ["dm-meltingpot"]
+brian2 = ["brian2"]
+mne = ["mne", "scikit-learn"]
+sbi = ["sbi"]
+nilearn = ["nilearn"]
+gdsfactory = ["gdsfactory"]
+netpyne = ["netpyne", "neuron", "gdm-concordia"]
+concordia = ["gdm-concordia"]
+dev = ["pytest>=8", "numpy", "ipython"]
+notebook = ["ipython"]
+all = ["jaxley", "cpm-toolbox", "dm-meltingpot", "brian2", "mne", "scikit-learn", "sbi", "nilearn", "gdsfactory", "netpyne", "neuron", "gdm-concordia"]
+
+[project.scripts]
+daftar = "daftar.cli:main"
+
+[project.entry-points.pytest11]
+daftar = "daftar.pytest_plugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
